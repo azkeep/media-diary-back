@@ -7,15 +7,15 @@ import (
 )
 
 type MediaRepository interface {
-	FindAllByOrderByDateDesc() ([]model.MediaSelected, error)
-	FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaSelected, error)
-	FindByDate(date model.LocalDate) ([]model.MediaSelected, error)
+	FindAllByOrderByDateDesc() ([]model.MediaEntry, error)
+	FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error)
+	FindByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	ExistsByID(id int64) (bool, error)
-	Save(media *model.MediaSelected) error
+	Save(media *model.MediaEntry) error
 	DeleteByID(id int64) error
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	FindAllUniqueTitlesByRating(months int) ([]model.MediaRating, error)
-	ImportBatch(entries []model.MediaSelected) error
+	ImportBatch(entries []model.MediaEntry) error
 }
 
 type postgresMediaRepository struct {
@@ -26,7 +26,7 @@ func NewMediaRepository(db *sql.DB) MediaRepository {
 	return &postgresMediaRepository{db: db}
 }
 
-func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaSelected, error) {
+func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaEntry, error) {
 	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment 
 	          FROM titles 
 	          ORDER BY date_actual DESC`
@@ -41,9 +41,9 @@ func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaSelec
 		}
 	}(rows)
 
-	var result []model.MediaSelected
+	var result []model.MediaEntry
 	for rows.Next() {
-		var m model.MediaSelected
+		var m model.MediaEntry
 		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
 		if err != nil {
 			return nil, err
@@ -56,7 +56,7 @@ func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaSelec
 	return result, nil
 }
 
-func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaSelected, error) {
+func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error) {
 	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment
 	          FROM titles 
 	          WHERE date_actual >= $1 
@@ -72,9 +72,9 @@ func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(d
 		}
 	}(rows)
 
-	var result []model.MediaSelected
+	var result []model.MediaEntry
 	for rows.Next() {
-		var m model.MediaSelected
+		var m model.MediaEntry
 		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
 		if err != nil {
 			return nil, err
@@ -87,7 +87,7 @@ func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(d
 	return result, nil
 }
 
-func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.MediaSelected, error) {
+func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.MediaEntry, error) {
 	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment
 	          FROM titles 
 	          WHERE date_actual = $1`
@@ -102,9 +102,9 @@ func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.Medi
 		}
 	}(rows)
 
-	var result []model.MediaSelected
+	var result []model.MediaEntry
 	for rows.Next() {
-		var m model.MediaSelected
+		var m model.MediaEntry
 		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
 		if err != nil {
 			return nil, err
@@ -124,7 +124,7 @@ func (r *postgresMediaRepository) ExistsByID(id int64) (bool, error) {
 	return exists, err
 }
 
-func (r *postgresMediaRepository) Save(media *model.MediaSelected) error {
+func (r *postgresMediaRepository) Save(media *model.MediaEntry) error {
 	if media.ID == 0 {
 		query := `INSERT INTO titles (title, date_actual, is_finished, media_type, media_genre, media_comment) 
 		          VALUES ($1, $2, $3, $4, $5, $6) 
@@ -223,11 +223,36 @@ func (r *postgresMediaRepository) FindAllUniqueTitlesByRating(months int) ([]mod
 	return result, nil
 }
 
-func (r *postgresMediaRepository) ImportBatch(entries []model.MediaSelected) error {
+func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return fmt.Errorf("Error beginning transaction: %s", err)
 	}
 	defer tx.Rollback()
+
+	if _, err := tx.Exec("TRUNCATE TABLE titles RESTART IDENTITY"); err != nil {
+		return fmt.Errorf("Error truncating table `titles`: %s", err)
+	}
+
+	stmt, err := tx.Prepare(`insert into titles (title, date_actual, is_finished, media_type, media_genre, is_dropped, media_comment)
+values ($1, $2, $3, $4, $5, $6)`)
+	if err != nil {
+		return fmt.Errorf("Error preparing statement: %s", err)
+	}
+	defer stmt.Close()
+
+	for _, entry := range entries {
+		_, err := stmt.Exec(entry.Title,
+			entry.Date,
+			entry.IsFinished,
+			entry.Type,
+			entry.Genre,
+			entry.IsDropped,
+			entry.Comment)
+		if err != nil {
+			return fmt.Errorf("error inserting entry '%s - %s': %s", entry.Date, entry.Title, err)
+		}
+	}
+
 	return tx.Commit()
 }

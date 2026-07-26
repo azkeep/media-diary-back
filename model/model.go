@@ -66,15 +66,16 @@ func (ld LocalDate) Value() (driver.Value, error) {
 	return t, nil
 }
 
-// MediaSelected represents the media entry model
-type MediaSelected struct {
+// MediaEntry represents the media entry model
+type MediaEntry struct {
 	ID         int64     `json:"id"`
-	Title      string    `json:"title"`
 	Date       LocalDate `json:"date"`
+	Title      string    `json:"title"`
 	IsFinished bool      `json:"isFinished"`
 	Type       *string   `json:"type"`
 	Genre      *string   `json:"genre"`
-	Comment    *string   `json:"comment"`
+	IsDropped  bool      `json:"isDropped"`
+	Comment    string    `json:"comment"`
 }
 
 type MediaRating struct {
