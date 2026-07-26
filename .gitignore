@@ -1,0 +1,23 @@
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.iml
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+out/
+
+# env file
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

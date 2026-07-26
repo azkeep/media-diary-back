@@ -1,0 +1,12 @@
+/* Static CSS file */
+
+h1 {
+    color: #333;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 5px;
+}
+
+header p {
+    color: #666;
+    margin-bottom: 15px;
+}
