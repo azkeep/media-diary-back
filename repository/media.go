@@ -235,7 +235,7 @@ func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error 
 	}
 
 	stmt, err := tx.Prepare(`insert into titles (title, date_actual, is_finished, media_type, media_genre, is_dropped, media_comment)
-values ($1, $2, $3, $4, $5, $6)`)
+values ($1, $2, $3, $4, $5, $6, $7)`)
 	if err != nil {
 		return fmt.Errorf("Error preparing statement: %s", err)
 	}
