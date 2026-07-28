@@ -47,6 +47,7 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", h.GetStats)
 	mux.HandleFunc("GET /api/entries/ratings/{months}", h.GetTitlesRating)
 	mux.HandleFunc("POST /api/entries/import", h.ImportCSV)
+	mux.HandleFunc("GET /api/entries/search/{searchTerm}", h.SearchTitles)
 }
 
 func (h *MediaHandler) GetEntriesLaterThan(w http.ResponseWriter, r *http.Request) {
@@ -170,30 +171,6 @@ func (h *MediaHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func sendJSON(w http.ResponseWriter, result []model.MediaEntry) {
-	if len(result) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(result)
-	if err != nil {
-		return
-	}
-}
-
-func sendJSONRating(w http.ResponseWriter, result []model.MediaRating) {
-	if len(result) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(result)
-	if err != nil {
-		return
-	}
-}
-
 func (h *MediaHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	title := r.URL.Query().Get("title")
 	if title == "" {
@@ -269,4 +246,46 @@ func (h *MediaHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "CSV data successfully validated and imported.",
 	})
+}
+
+func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
+	searchTerm := r.PathValue("searchTerm")
+
+	if len(searchTerm) == 0 {
+		log.Printf("Empty search term")
+		http.Error(w, "Empty search term", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.svc.SearchEntries(searchTerm)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, result)
+}
+
+func sendJSON(w http.ResponseWriter, result []model.MediaEntry) {
+	if len(result) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(result)
+	if err != nil {
+		return
+	}
+}
+
+func sendJSONRating(w http.ResponseWriter, result []model.MediaRating) {
+	if len(result) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(result)
+	if err != nil {
+		return
+	}
 }

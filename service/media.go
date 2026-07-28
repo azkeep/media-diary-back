@@ -22,6 +22,7 @@ type MediaService interface {
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	GetAllTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportFromCSV(r io.Reader) error
+	SearchEntries(searchTerm string) ([]model.MediaEntry, error)
 }
 
 type CSVRow struct {
@@ -145,6 +146,11 @@ func (s *mediaService) ImportFromCSV(r io.Reader) error {
 	}
 
 	return s.repo.ImportBatch(parsedEntries)
+}
+
+func (s *mediaService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
+	searchTerm = strings.TrimSpace(searchTerm)
+	return s.repo.SearchEntries(searchTerm)
 }
 
 func calculateScores(ratings []model.MediaRating) {

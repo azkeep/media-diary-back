@@ -16,6 +16,7 @@ type MediaRepository interface {
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	FindAllUniqueTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportBatch(entries []model.MediaEntry) error
+	SearchEntries(searchTerm string) ([]model.MediaEntry, error)
 }
 
 type postgresMediaRepository struct {
@@ -27,37 +28,38 @@ func NewMediaRepository(db *sql.DB) MediaRepository {
 }
 
 func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaEntry, error) {
-	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment 
+	query := `SELECT id, 
+       		      title, 
+       		      date_actual, 
+       		      is_finished, 
+       		      media_type, 
+       		      media_genre, 
+       		      media_comment 
 	          FROM titles 
 	          ORDER BY date_actual DESC`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+	defer rows.Close()
 
-		}
-	}(rows)
-
-	var result []model.MediaEntry
-	for rows.Next() {
-		var m model.MediaEntry
-		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, m)
-	}
-	if err := rows.Err(); err != nil {
+	result, err := parseRows(rows)
+	if err != nil {
 		return nil, err
 	}
+
 	return result, nil
 }
 
 func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error) {
-	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment
+	query := `SELECT id, 
+       	          title, 
+       		      date_actual, 
+       		      is_finished, 
+       		      media_type, 
+       		      media_genre, 
+       		      is_dropped, 
+       		      media_comment
 	          FROM titles 
 	          WHERE date_actual >= $1 
 	          ORDER BY date_actual DESC`
@@ -65,55 +67,38 @@ func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(d
 	if err != nil {
 		return nil, err
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+	defer rows.Close()
 
-		}
-	}(rows)
-
-	var result []model.MediaEntry
-	for rows.Next() {
-		var m model.MediaEntry
-		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, m)
-	}
-	if err := rows.Err(); err != nil {
+	result, err := parseRows(rows)
+	if err != nil {
 		return nil, err
 	}
+
 	return result, nil
 }
 
 func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.MediaEntry, error) {
-	query := `SELECT id, title, date_actual, is_finished, media_type, media_genre, media_comment
+	query := `SELECT id, 
+       		      title, 
+       		      date_actual, 
+       		      is_finished, 
+       		      media_type, 
+       		      media_genre, 
+       		      is_dropped, 
+       		      media_comment
 	          FROM titles 
 	          WHERE date_actual = $1`
 	rows, err := r.db.Query(query, date)
 	if err != nil {
 		return nil, err
 	}
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
+	defer rows.Close()
 
-		}
-	}(rows)
-
-	var result []model.MediaEntry
-	for rows.Next() {
-		var m model.MediaEntry
-		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.Comment)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, m)
-	}
-	if err := rows.Err(); err != nil {
+	result, err := parseRows(rows)
+	if err != nil {
 		return nil, err
 	}
+
 	return result, nil
 }
 
@@ -126,10 +111,16 @@ func (r *postgresMediaRepository) ExistsByID(id int64) (bool, error) {
 
 func (r *postgresMediaRepository) Save(media *model.MediaEntry) error {
 	if media.ID == 0 {
-		query := `INSERT INTO titles (title, date_actual, is_finished, media_type, media_genre, media_comment) 
-		          VALUES ($1, $2, $3, $4, $5, $6) 
+		query := `INSERT INTO titles (title, 
+                    date_actual, 
+                    is_finished, 
+                    media_type, 
+                    media_genre,
+                    is_dropped,
+                    media_comment) 
+		          VALUES ($1, $2, $3, $4, $5, $6, $7) 
 		          RETURNING id`
-		return r.db.QueryRow(query, media.Title, media.Date, media.IsFinished, media.Type, media.Genre, media.Comment).Scan(&media.ID)
+		return r.db.QueryRow(query, media.Title, media.Date, media.IsFinished, media.Type, media.Genre, media.IsDropped, media.Comment).Scan(&media.ID)
 	}
 
 	query := `UPDATE titles 
@@ -234,8 +225,14 @@ func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error 
 		return fmt.Errorf("Error truncating table `titles`: %s", err)
 	}
 
-	stmt, err := tx.Prepare(`insert into titles (title, date_actual, is_finished, media_type, media_genre, is_dropped, media_comment)
-values ($1, $2, $3, $4, $5, $6, $7)`)
+	stmt, err := tx.Prepare(`INSERT INTO titles (title, 
+                    date_actual, 
+                    is_finished, 
+                    media_type, 
+                    media_genre, 
+                    is_dropped, 
+                    media_comment)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`)
 	if err != nil {
 		return fmt.Errorf("Error preparing statement: %s", err)
 	}
@@ -255,4 +252,50 @@ values ($1, $2, $3, $4, $5, $6, $7)`)
 	}
 
 	return tx.Commit()
+}
+
+func (r *postgresMediaRepository) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
+	query := `SELECT id, 
+       		      title, 
+       		      date_actual, 
+       		      is_finished, 
+       		      media_type, 
+       		      media_genre, 
+       		      is_dropped, 
+       		      media_comment
+			  FROM titles
+			  WHERE title ILIKE $1
+			  OR media_comment ILIKE $1
+			  OR media_type ILIKE $1
+			  ORDER BY date_actual DESC`
+
+	pattern := fmt.Sprintf("%%%s%%", searchTerm)
+	rows, err := r.db.Query(query, pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result, err := parseRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func parseRows(rows *sql.Rows) ([]model.MediaEntry, error) {
+	var result []model.MediaEntry
+	for rows.Next() {
+		var m model.MediaEntry
+		err := rows.Scan(&m.ID, &m.Title, &m.Date, &m.IsFinished, &m.Type, &m.Genre, &m.IsDropped, &m.Comment)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
