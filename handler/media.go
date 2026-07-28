@@ -230,6 +230,7 @@ func (h *MediaHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasSuffix(
 		strings.ToLower(header.Filename), ".csv") {
 		http.Error(w, "Uploaded file must have a .csv extension", http.StatusBadRequest)
+		return
 	}
 
 	log.Printf("Starting CSV import process for file: %s", header.Filename)
@@ -237,9 +238,10 @@ func (h *MediaHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ImportFromCSV(file); err != nil {
 		log.Printf("CSV import failed: %v", err)
 		http.Error(w, fmt.Sprintf("Import failed: %v", err), http.StatusBadRequest)
-	} else {
-		log.Printf("CSV data successfully validated and imported.")
+		return
 	}
+
+	log.Printf("CSV data successfully validated and imported.")
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
