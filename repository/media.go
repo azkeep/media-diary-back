@@ -33,7 +33,8 @@ func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaEntry
        		      date_actual, 
        		      is_finished, 
        		      media_type, 
-       		      media_genre, 
+       		      media_genre,
+       		      is_dropped,
        		      media_comment 
 	          FROM titles 
 	          ORDER BY date_actual DESC`
@@ -57,9 +58,9 @@ func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(d
        		      date_actual, 
        		      is_finished, 
        		      media_type, 
-       		      media_genre, 
-       		      is_dropped, 
-       		      media_comment
+       		      media_genre,
+       		      is_dropped,
+       		      media_comment 
 	          FROM titles 
 	          WHERE date_actual >= $1 
 	          ORDER BY date_actual DESC`
@@ -83,9 +84,9 @@ func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.Medi
        		      date_actual, 
        		      is_finished, 
        		      media_type, 
-       		      media_genre, 
-       		      is_dropped, 
-       		      media_comment
+       		      media_genre,
+       		      is_dropped,
+       		      media_comment 
 	          FROM titles 
 	          WHERE date_actual = $1`
 	rows, err := r.db.Query(query, date)
