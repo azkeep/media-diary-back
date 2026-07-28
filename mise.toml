@@ -1,0 +1,22 @@
+[tools]
+"aqua:pressly/goose" = "latest"
+
+[env]
+DB_URL = "postgres://postgres:postgres@localhost:5432/matalogue?sslmode=disable"
+MIGRATIONS_DIR = "db/migrations"
+
+[tasks."migrate:create"]
+description = "Create a new migration file (usage: mise run migrate:create -- name_of_migration sql)"
+run = "goose -dir {{env.MIGRATIONS_DIR}} create"
+
+[tasks."migrate:up"]
+description = "Apply all pending migrations"
+run = "goose -dir {{env.MIGRATIONS_DIR}} postgres \"{{env.DB_URL}}\" up"
+
+[tasks."migrate:down"]
+description = "Roll back the most recent migration"
+run = "goose -dir {{env.MIGRATIONS_DIR}} postgres \"{{env.DB_URL}}\" down"
+
+[tasks."migrate:status"]
+description = "Check the status of all migrations"
+run = "goose -dir {{env.MIGRATIONS_DIR}} postgres \"{{env.DB_URL}}\" status"
