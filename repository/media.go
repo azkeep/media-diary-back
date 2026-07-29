@@ -248,7 +248,7 @@ func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error 
 			entry.IsDropped,
 			entry.Comment)
 		if err != nil {
-			return fmt.Errorf("error inserting entry '%s - %s': %s", entry.Date, entry.Title, err)
+			return fmt.Errorf("error inserting entry '%v - %s': %s", entry.Date, entry.Title, err)
 		}
 	}
 
