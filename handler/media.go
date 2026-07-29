@@ -213,7 +213,7 @@ func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendJSONRating(w, result)
+	sendJSON(w, result)
 }
 
 func (h *MediaHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +268,7 @@ func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func sendJSON(w http.ResponseWriter, result []model.MediaEntry) {
+func sendJSON[T any](w http.ResponseWriter, result []T) {
 	if len(result) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -276,18 +276,7 @@ func sendJSON(w http.ResponseWriter, result []model.MediaEntry) {
 	w.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(result)
 	if err != nil {
-		return
-	}
-}
-
-func sendJSONRating(w http.ResponseWriter, result []model.MediaRating) {
-	if len(result) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(result)
-	if err != nil {
+		log.Printf("Failed encoding response: %v", err)
 		return
 	}
 }
