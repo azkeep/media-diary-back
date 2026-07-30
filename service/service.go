@@ -7,6 +7,8 @@ import (
 	"github.com/azkeep/MediaDiary/backend-go/model"
 	"github.com/azkeep/MediaDiary/backend-go/repository"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +24,7 @@ type MediaService interface {
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	GetAllTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportFromCSV(r io.Reader) error
+	ExportRatingsToCSV(w io.Writer, months int) error
 	SearchEntries(searchTerm string) ([]model.MediaEntry, error)
 }
 
@@ -40,11 +43,13 @@ type mediaService struct {
 }
 
 const (
-	FinishedRatio   = 9
-	ColumnsExpected = 7
-	ReaderComma     = ';'
-	DateFormat      = "02.01.2006"
-	DateExpected    = "DD.MM.YYYY"
+	FinishedRatio               = 9
+	ColumnsExpected             = 7
+	CSVComma                    = ';'
+	DateFormat                  = "02.01.2006"
+	DateExpected                = "DD.MM.YYYY"
+	ExportDirPerm   os.FileMode = 0755
+	ExportDir                   = "export"
 )
 
 func NewMediaService(repo repository.MediaRepository) MediaService {
@@ -101,7 +106,7 @@ func (s *mediaService) GetAllTitlesByRating(months int) ([]model.MediaRating, er
 
 func (s *mediaService) ImportFromCSV(r io.Reader) error {
 	reader := csv.NewReader(r)
-	reader.Comma = ReaderComma
+	reader.Comma = CSVComma
 	reader.TrimLeadingSpace = true
 
 	header, err := reader.Read()
@@ -146,6 +151,55 @@ func (s *mediaService) ImportFromCSV(r io.Reader) error {
 	}
 
 	return s.repo.ImportBatch(parsedEntries)
+}
+
+func (s *mediaService) ExportRatingsToCSV(w io.Writer, months int) error {
+	ratings, err := s.GetAllTitlesByRating(months)
+	if err != nil {
+		return fmt.Errorf("failed to fetch ratings: %w", err)
+	}
+
+	if err := os.MkdirAll(ExportDir, ExportDirPerm); err != nil {
+		return fmt.Errorf("failed to create `%s` directory: %w", ExportDir, err)
+	}
+
+	exportFileName := fmt.Sprintf("%s-ratings-last-%d-months.csv", time.Now().Format("20060102150405"), months)
+	exportFilePath := filepath.Join(ExportDir, exportFileName)
+
+	file, err := os.Create(exportFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create local export file %s: %w", exportFilePath, err)
+	}
+	defer file.Close()
+
+	mw := io.MultiWriter(w, file)
+	writer := csv.NewWriter(mw)
+	writer.Comma = CSVComma
+
+	header := []string{"Title", "Type", "Total", "Finished", "Rating"}
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	if err := writer.Write([]string{}); err != nil {
+		return fmt.Errorf("failed to write empty line: %w", err)
+	}
+
+	for _, r := range ratings {
+		row := []string{
+			r.Title,
+			r.Type,
+			strconv.Itoa(r.Total),
+			strconv.Itoa(r.Finished),
+			strconv.Itoa(r.Rating),
+		}
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	return writer.Error()
 }
 
 func (s *mediaService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {

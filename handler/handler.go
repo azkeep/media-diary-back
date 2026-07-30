@@ -27,6 +27,7 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Analytics & Search
 	mux.HandleFunc("GET /api/stats", h.GetStats)
 	mux.HandleFunc("GET /api/entries/ratings/{months}", h.GetTitlesRating)
+	mux.HandleFunc("GET /api/entries/ratings/{months}/export", h.ExportTitlesRating)
 	mux.HandleFunc("GET /api/entries/search/{searchTerm}", h.SearchTitles)
 
 	// Bulk Operations
