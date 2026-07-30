@@ -2,9 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 func (h *MediaHandler) GetStats(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +52,26 @@ func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendJSON(w, result)
+}
+
+func (h *MediaHandler) ExportTitlesRating(w http.ResponseWriter, r *http.Request) {
+	monStr := r.PathValue("months")
+
+	months, err := strconv.Atoi(monStr)
+	if err != nil || months < 0 {
+		http.Error(w, "invalid months parameter", http.StatusBadRequest)
+		return
+	}
+
+	filename := fmt.Sprintf("%s-ratings-last-%d-months.csv", time.Now().Format("20060102150405"), months)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+	if err := h.svc.ExportRatingsToCSV(w, months); err != nil {
+		log.Printf("Error exporting ratings to CSV: %v", err)
+		http.Error(w, "Failed to export CSV", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
