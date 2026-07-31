@@ -55,10 +55,10 @@ func (m *mockService) GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntr
 func (m *mockService) SaveBatch(entries []model.MediaEntry) error {
 	return m.err
 }
-func (m *mockService) Update(media *model.MediaEntry) error {
-	return m.err
+func (m *mockService) UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error) {
+	return nil, m.err
 }
-func (m *mockService) Delete(id int64) error {
+func (m *mockService) DeleteBatch(ids []int64) error {
 	return m.err
 }
 func (m *mockService) GetTitleStats(title string) (*model.StatsResponse, bool, error) {
