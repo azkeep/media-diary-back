@@ -18,10 +18,9 @@ type MediaService interface {
 	GetAllMedia() ([]model.MediaEntry, error)
 	GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error)
-	//Save(media *model.MediaEntry) error
 	SaveBatch(entries []model.MediaEntry) error
-	Update(media *model.MediaEntry) error
-	Delete(id int64) error
+	UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error)
+	DeleteBatch(ids []int64) error
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	GetAllTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportFromCSV(r io.Reader) error
@@ -84,20 +83,40 @@ func (s *mediaService) SaveBatch(entries []model.MediaEntry) error {
 	return s.repo.SaveBatch(entries)
 }
 
-func (s *mediaService) Update(media *model.MediaEntry) error {
-	//exists, err := s.repo.ExistsByID(media.ID)
-	//if err != nil {
-	//	return err
-	//}
-	//if !exists {
-	//	return fmt.Errorf("media entry does not exist with id: %d", media.ID)
-	//}
-	//return s.repo.Save(media)
-	return nil
+func (s *mediaService) UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error) {
+	if len(entries) == 0 {
+		return nil, errors.New("empty media entries")
+	}
+
+	for i := range entries {
+		if entries[i].ID <= 0 {
+			return nil, fmt.Errorf("entry at index %d has invalid ID: %d", i, entries[i].ID)
+		}
+		if strings.TrimSpace(entries[i].Title) == "" {
+			return nil, fmt.Errorf("entry at index %d has empty title", i)
+		}
+	}
+
+	updatedEntries, err := s.repo.UpdateBatch(entries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update media entries batch: %w", err)
+	}
+
+	return updatedEntries, nil
 }
 
-func (s *mediaService) Delete(id int64) error {
-	return s.repo.DeleteByID(id)
+func (s *mediaService) DeleteBatch(ids []int64) error {
+	if len(ids) == 0 {
+		return errors.New("ids list is empty")
+	}
+
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("invalid entry id: %d", id)
+		}
+	}
+
+	return s.repo.DeleteBatch(ids)
 }
 
 func (s *mediaService) GetTitleStats(title string) (*model.StatsResponse, bool, error) {
@@ -126,12 +145,12 @@ func (s *mediaService) ImportFromCSV(r io.Reader) error {
 		if errors.Is(err, io.EOF) {
 			return errors.New("CSV file is empty")
 		}
-		return fmt.Errorf("Failed to read CSV header: %w", err)
+		return fmt.Errorf("failed to read CSV header: %w", err)
 	}
 
 	columnsActual := len(header)
 	if columnsActual < ColumnsExpected {
-		return fmt.Errorf("Invalid CSV format: expected %d columns, got %d", ColumnsExpected, columnsActual)
+		return fmt.Errorf("invalid CSV format: expected %d columns, got %d", ColumnsExpected, columnsActual)
 	}
 
 	var parsedEntries []model.MediaEntry
@@ -275,20 +294,20 @@ func newCSVRow(record []string) CSVRow {
 
 func (r CSVRow) ToDomainModel() (*model.MediaEntry, error) {
 	if r.TitleRaw == "" {
-		return nil, errors.New("Title cannot be empty")
+		return nil, errors.New("title cannot be empty")
 	}
 
 	dateStr := strings.TrimSpace(r.DateRaw)
 	parsedTime, err := time.Parse(DateFormat, dateStr)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid date: %s (expected %s)", r.DateRaw, DateExpected)
+		return nil, fmt.Errorf("invalid date: %s (expected %s)", r.DateRaw, DateExpected)
 	}
 
 	var isFinished bool
 	if r.IsFinishedRaw != "" {
 		isFinished, err = strconv.ParseBool(strings.ToLower(r.IsFinishedRaw))
 		if err != nil {
-			return nil, fmt.Errorf("Invalid boolean fo isFinished: '%s'", r.IsFinishedRaw)
+			return nil, fmt.Errorf("invalid boolean fo isFinished: '%s'", r.IsFinishedRaw)
 		}
 	}
 
@@ -302,11 +321,16 @@ func (r CSVRow) ToDomainModel() (*model.MediaEntry, error) {
 		genrePtr = &r.GenreRaw
 	}
 
+	var commentPtr *string
+	if r.MediaCommentRaw != "" {
+		commentPtr = &r.MediaCommentRaw
+	}
+
 	var isDropped bool
 	if r.IsDroppedRaw != "" {
 		isDropped, err = strconv.ParseBool(strings.ToLower(r.IsDroppedRaw))
 		if err != nil {
-			return nil, fmt.Errorf("Invalid boolean fo isDropped: '%s'", r.IsDroppedRaw)
+			return nil, fmt.Errorf("invalid boolean fo isDropped: '%s'", r.IsDroppedRaw)
 		}
 	}
 
@@ -317,6 +341,6 @@ func (r CSVRow) ToDomainModel() (*model.MediaEntry, error) {
 		Type:       typePtr,
 		Genre:      genrePtr,
 		IsDropped:  isDropped,
-		Comment:    r.MediaCommentRaw,
+		Comment:    commentPtr,
 	}, nil
 }

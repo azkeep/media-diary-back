@@ -75,7 +75,7 @@ type MediaEntry struct {
 	Type       *string   `json:"type"`
 	Genre      *string   `json:"genre"`
 	IsDropped  bool      `json:"isDropped"`
-	Comment    string    `json:"comment"`
+	Comment    *string   `json:"comment"`
 }
 
 type MediaRating struct {
