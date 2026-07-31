@@ -1,21 +1,24 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"github.com/azkeep/MediaDiary/backend-go/model"
-	"github.com/azkeep/MediaDiary/backend-go/repository"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/azkeep/MediaDiary/backend-go/model"
+	"github.com/azkeep/MediaDiary/backend-go/repository"
 )
 
 type MediaService interface {
 	GetAllMedia() ([]model.MediaEntry, error)
+	GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error)
 	GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error)
 	SaveBatch(entries []model.MediaEntry) error
@@ -50,6 +53,7 @@ const (
 	DateExpected                = "DD.MM.YYYY"
 	ExportDirPerm   os.FileMode = 0755
 	ExportDir                   = "export"
+	PageLimit                   = 50
 )
 
 func NewMediaService(repo repository.MediaRepository) MediaService {
@@ -58,6 +62,61 @@ func NewMediaService(repo repository.MediaRepository) MediaService {
 
 func (s *mediaService) GetAllMedia() ([]model.MediaEntry, error) {
 	return s.repo.FindAllByOrderByDateDesc()
+}
+
+func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*model.CursorResponse, error) {
+	if limit <= 0 || limit > (PageLimit*2) {
+		limit = PageLimit
+	}
+
+	var lastDate *model.LocalDate
+	var lastID int64
+
+	if encodedCursor != "" {
+		decoded, err := base64.StdEncoding.DecodeString(encodedCursor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor format: %s", err)
+		}
+		parts := strings.Split(string(decoded), "_")
+		if len(parts) == 2 {
+			t, err := time.Parse(DateFormat, parts[0])
+			if err == nil {
+				ld := model.LocalDate(t)
+				lastDate = &ld
+			}
+			lastID, _ = strconv.ParseInt(parts[1], 10, 64)
+		}
+	}
+
+	// Fetch 1 extra record to evaluate `HasMore` efficiently without a COUNT(*)
+	entries, err := s.repo.FindAllByCursor(lastDate, lastID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := false
+	if len(entries) > limit {
+		hasMore = true
+		entries = entries[:limit] // trim extra record
+	}
+
+	if entries == nil {
+		entries = []model.MediaEntry{}
+	}
+
+	nextCursor := ""
+	if hasMore && len(entries) > 0 {
+		lastEntry := entries[len(entries)-1]
+		rawCursor := fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(DateFormat), lastEntry.ID)
+		nextCursor = base64.StdEncoding.EncodeToString([]byte(rawCursor))
+	}
+
+	return &model.CursorResponse{
+		Data:       entries,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
+
 }
 
 func (s *mediaService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error) {

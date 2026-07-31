@@ -34,14 +34,11 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/entries/import", h.ImportCSV)
 }
 
-func sendJSON[T any](w http.ResponseWriter, result []T) {
-	if len(result) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+func sendJSON[T any](w http.ResponseWriter, result T) {
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(result)
-	if err != nil {
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
 		log.Printf("Failed encoding response: %v", err)
 		return
 	}
