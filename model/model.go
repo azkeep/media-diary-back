@@ -6,6 +6,25 @@ import (
 	"time"
 )
 
+type MediaEntry struct {
+	ID         int64     `json:"id"`
+	Date       LocalDate `json:"date"`
+	Title      string    `json:"title"`
+	IsFinished bool      `json:"isFinished"`
+	Type       *string   `json:"type"`
+	Genre      *string   `json:"genre"`
+	IsDropped  bool      `json:"isDropped"`
+	Comment    *string   `json:"comment"`
+}
+
+type MediaRating struct {
+	Title    string `json:"title"`
+	Type     string `json:"type"`
+	Total    int    `json:"total"`
+	Finished int    `json:"finished"`
+	Rating   int    `json:"rating"`
+}
+
 type StatsResponse struct {
 	Title       string `json:"title"`
 	Last3days   int    `json:"last_3_days"`
@@ -64,24 +83,4 @@ func (ld LocalDate) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return t, nil
-}
-
-// MediaEntry represents the media entry model
-type MediaEntry struct {
-	ID         int64     `json:"id"`
-	Date       LocalDate `json:"date"`
-	Title      string    `json:"title"`
-	IsFinished bool      `json:"isFinished"`
-	Type       *string   `json:"type"`
-	Genre      *string   `json:"genre"`
-	IsDropped  bool      `json:"isDropped"`
-	Comment    *string   `json:"comment"`
-}
-
-type MediaRating struct {
-	Title    string `json:"title"`
-	Type     string `json:"type"`
-	Total    int    `json:"total"`
-	Finished int    `json:"finished"`
-	Rating   int    `json:"rating"`
 }
