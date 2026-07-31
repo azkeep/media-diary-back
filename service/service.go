@@ -18,7 +18,8 @@ type MediaService interface {
 	GetAllMedia() ([]model.MediaEntry, error)
 	GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error)
-	Save(media *model.MediaEntry) error
+	//Save(media *model.MediaEntry) error
+	SaveBatch(entries []model.MediaEntry) error
 	Update(media *model.MediaEntry) error
 	Delete(id int64) error
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
@@ -68,20 +69,31 @@ func (s *mediaService) GetMediaLaterThan(date model.LocalDate) ([]model.MediaEnt
 	return s.repo.FindAllByDateGreaterThanEqualOrderByDateDesc(date)
 }
 
-func (s *mediaService) Save(media *model.MediaEntry) error {
-	media.ID = 0 // Ensure ID is generated
-	return s.repo.Save(media)
+func (s *mediaService) SaveBatch(entries []model.MediaEntry) error {
+	if len(entries) == 0 {
+		return errors.New("empty media entries")
+	}
+
+	for i := range entries {
+		entries[i].ID = 0
+		if strings.TrimSpace(entries[i].Title) == "" {
+			return fmt.Errorf("entry at index %d has empty title", i)
+		}
+	}
+
+	return s.repo.SaveBatch(entries)
 }
 
 func (s *mediaService) Update(media *model.MediaEntry) error {
-	exists, err := s.repo.ExistsByID(media.ID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("media entry does not exist with id: %d", media.ID)
-	}
-	return s.repo.Save(media)
+	//exists, err := s.repo.ExistsByID(media.ID)
+	//if err != nil {
+	//	return err
+	//}
+	//if !exists {
+	//	return fmt.Errorf("media entry does not exist with id: %d", media.ID)
+	//}
+	//return s.repo.Save(media)
+	return nil
 }
 
 func (s *mediaService) Delete(id int64) error {
