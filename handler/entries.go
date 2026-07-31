@@ -86,46 +86,40 @@ func (h *MediaHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%d entries added successfully", len(entries))
 }
 
-func (h *MediaHandler) EditEntry(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("entryId")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+func (h *MediaHandler) EditEntries(w http.ResponseWriter, r *http.Request) {
+	var entries []model.MediaEntry
+	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+		http.Error(w, "invalid request body: expected array of entries", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Updating %d entries...", len(entries))
+
+	updatedEntries, err := h.svc.UpdateBatch(entries)
 	if err != nil {
-		http.Error(w, "invalid entryId parameter", http.StatusBadRequest)
-		return
-	}
-
-	var m model.MediaEntry
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	m.ID = id
-
-	log.Printf("Updating entry ID: %d", id)
-	if err := h.svc.Update(&m); err != nil {
-		log.Printf("Error updating entry: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Error updating entries batch: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(m)
-	if err != nil {
-		return
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(updatedEntries); err != nil {
+		log.Printf("Error encoding response: %v", err)
 	}
 }
 
-func (h *MediaHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("entryId")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid entryId parameter", http.StatusBadRequest)
+func (h *MediaHandler) DeleteEntries(w http.ResponseWriter, r *http.Request) {
+	var ids []int64
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "invalid request body: expected array of int64 IDs", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Deleting entry ID: %d", id)
-	if err := h.svc.Delete(id); err != nil {
-		log.Printf("Error deleting entry: %v", err)
+	log.Printf("Deleting %d entries...", len(ids))
+
+	if err := h.svc.DeleteBatch(ids); err != nil {
+		log.Printf("Error deleting batch: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

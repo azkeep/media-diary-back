@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/azkeep/MediaDiary/backend-go/model"
 )
@@ -12,7 +13,8 @@ type MediaRepository interface {
 	FindByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	ExistsByID(id int64) (bool, error)
 	SaveBatch(entries []model.MediaEntry) error
-	DeleteByID(id int64) error
+	DeleteBatch(ids []int64) error
+	UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error)
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	FindAllUniqueTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportBatch(entries []model.MediaEntry) error
@@ -150,10 +152,107 @@ func (r *postgresMediaRepository) SaveBatch(entries []model.MediaEntry) error {
 	return tx.Commit()
 }
 
-func (r *postgresMediaRepository) DeleteByID(id int64) error {
-	query := `DELETE FROM titles WHERE id = $1`
-	_, err := r.db.Exec(query, id)
-	return err
+func (r *postgresMediaRepository) DeleteBatch(ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("cannot begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`DELETE FROM titles WHERE id = $1`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare delete statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, id := range ids {
+		if _, err := stmt.Exec(id); err != nil {
+			return fmt.Errorf("failed to delete entry with id %d: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *postgresMediaRepository) UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("cannot begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`UPDATE titles SET 
+                      title=$1, 
+                      date_actual=$2, 
+                      is_finished=$3,
+                      media_type=COALESCE($4, media_type),
+                      media_genre=COALESCE($5, media_genre),
+                      is_dropped=$6,
+                      media_comment=COALESCE($7, media_comment)
+                  WHERE id = $8
+                  RETURNING 
+                      id, 
+                      title, 
+                      date_actual,
+                      is_finished,
+                      media_type,
+                      media_genre,
+                      is_dropped,
+                      media_comment
+                  `)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare update statement: %w", err)
+	}
+	defer stmt.Close()
+
+	updatedEntries := make([]model.MediaEntry, 0, len(entries))
+
+	for i, entry := range entries {
+		var updated model.MediaEntry
+
+		err := stmt.QueryRow(
+			entry.Title,
+			entry.Date,
+			entry.IsFinished,
+			entry.Type,
+			entry.Genre,
+			entry.IsDropped,
+			entry.Comment,
+			entry.ID,
+		).Scan(
+			&updated.ID,
+			&updated.Title,
+			&updated.Date,
+			&updated.IsFinished,
+			&updated.Type,
+			&updated.Genre,
+			&updated.IsDropped,
+			&updated.Comment,
+		)
+
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("media entry does not exist with id: %d", entry.ID)
+			}
+			return nil, fmt.Errorf("failed to update entry at index %d (ID %d): %w", i, entry.ID, err)
+		}
+
+		updatedEntries = append(updatedEntries, updated)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return updatedEntries, nil
 }
 
 func (r *postgresMediaRepository) GetTitleStats(title string) (*model.StatsResponse, bool, error) {
