@@ -11,7 +11,7 @@ type MediaRepository interface {
 	FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error)
 	FindByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	ExistsByID(id int64) (bool, error)
-	Save(media *model.MediaEntry) error
+	SaveBatch(entries []model.MediaEntry) error
 	DeleteByID(id int64) error
 	GetTitleStats(title string) (*model.StatsResponse, bool, error)
 	FindAllUniqueTitlesByRating(months int) ([]model.MediaRating, error)
@@ -110,25 +110,44 @@ func (r *postgresMediaRepository) ExistsByID(id int64) (bool, error) {
 	return exists, err
 }
 
-func (r *postgresMediaRepository) Save(media *model.MediaEntry) error {
-	if media.ID == 0 {
-		query := `INSERT INTO titles (title, 
+func (r *postgresMediaRepository) SaveBatch(entries []model.MediaEntry) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("cannot begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT INTO titles (title,
                     date_actual, 
                     is_finished, 
                     media_type, 
                     media_genre,
                     is_dropped,
                     media_comment) 
-		          VALUES ($1, $2, $3, $4, $5, $6, $7) 
-		          RETURNING id`
-		return r.db.QueryRow(query, media.Title, media.Date, media.IsFinished, media.Type, media.Genre, media.IsDropped, media.Comment).Scan(&media.ID)
+		          VALUES ($1, $2, $3, $4, $5, $6, $7)
+		          RETURNING id
+		          `)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for i := range entries {
+		err := stmt.QueryRow(entries[i].Title,
+			entries[i].Date,
+			entries[i].IsFinished,
+			entries[i].Type,
+			entries[i].Genre,
+			entries[i].IsDropped,
+			entries[i].Comment,
+		).Scan(&entries[i].ID)
+
+		if err != nil {
+			return fmt.Errorf("failed to insert entry at index %d: %w", i, err)
+		}
 	}
 
-	query := `UPDATE titles 
-	          SET title = $1, date_actual = $2, is_finished = $3, media_type = $4, media_genre = $5, media_comment = $6 
-	          WHERE id = $7`
-	_, err := r.db.Exec(query, media.Title, media.Date, media.IsFinished, media.Type, media.Genre, media.Comment, media.ID)
-	return err
+	return tx.Commit()
 }
 
 func (r *postgresMediaRepository) DeleteByID(id int64) error {
@@ -218,12 +237,12 @@ func (r *postgresMediaRepository) FindAllUniqueTitlesByRating(months int) ([]mod
 func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error {
 	tx, err := r.db.Begin()
 	if err != nil {
-		return fmt.Errorf("Error beginning transaction: %s", err)
+		return fmt.Errorf("error beginning transaction: %s", err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec("TRUNCATE TABLE titles RESTART IDENTITY"); err != nil {
-		return fmt.Errorf("Error truncating table `titles`: %s", err)
+		return fmt.Errorf("error truncating table `titles`: %s", err)
 	}
 
 	stmt, err := tx.Prepare(`INSERT INTO titles (title, 
@@ -235,7 +254,7 @@ func (r *postgresMediaRepository) ImportBatch(entries []model.MediaEntry) error 
                     media_comment)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)`)
 	if err != nil {
-		return fmt.Errorf("Error preparing statement: %s", err)
+		return fmt.Errorf("error preparing statement: %s", err)
 	}
 	defer stmt.Close()
 

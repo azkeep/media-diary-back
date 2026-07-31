@@ -20,7 +20,7 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/entries/all", h.GetAllEntries)
 	mux.HandleFunc("GET /api/entries/date/{date}", h.GetEntriesByDate)
 	mux.HandleFunc("GET /api/entries/{days}", h.GetEntriesLaterThan)
-	mux.HandleFunc("POST /api/entries", h.AddEntry)
+	mux.HandleFunc("POST /api/entries", h.AddEntries)
 	mux.HandleFunc("PUT /api/entries/{entryId}", h.EditEntry)
 	mux.HandleFunc("DELETE /api/entries/{entryId}", h.DeleteEntry)
 

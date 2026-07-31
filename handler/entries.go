@@ -61,26 +61,29 @@ func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) AddEntry(w http.ResponseWriter, r *http.Request) {
-	var m model.MediaEntry
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+func (h *MediaHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
+	var entries []model.MediaEntry
+	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+		http.Error(w, "invalid request body: expected array of entries", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Adding new entry: %s", m.Title)
-	if err := h.svc.Save(&m); err != nil {
-		log.Printf("Error saving entry: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	log.Printf("Adding %d entries...", len(entries))
+
+	if err := h.svc.SaveBatch(entries); err != nil {
+		log.Printf("Error saving batch: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	err := json.NewEncoder(w).Encode(m)
-	if err != nil {
+	if err := json.NewEncoder(w).Encode(entries); err != nil {
+		log.Printf("Error encoding response: %v", err)
 		return
 	}
+
+	log.Printf("%d entries added successfully", len(entries))
 }
 
 func (h *MediaHandler) EditEntry(w http.ResponseWriter, r *http.Request) {
