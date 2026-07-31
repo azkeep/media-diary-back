@@ -9,6 +9,7 @@ import (
 
 type MediaRepository interface {
 	FindAllByOrderByDateDesc() ([]model.MediaEntry, error)
+	FindAllByCursor(lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error)
 	FindByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	ExistsByID(id int64) (bool, error)
@@ -52,6 +53,52 @@ func (r *postgresMediaRepository) FindAllByOrderByDateDesc() ([]model.MediaEntry
 	}
 
 	return result, nil
+}
+
+func (r *postgresMediaRepository) FindAllByCursor(lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error) {
+	var query string
+	var args []any
+
+	if lastDate != nil && lastID > 0 {
+		query = `SELECT 
+                     id,
+                     title,
+                     date_actual,
+                     is_finished,
+                     media_type,
+                     media_genre,
+                     is_dropped,
+                     media_comment
+                 FROM titles
+                 WHERE (date_actual, id) < ($1, $2)
+                 ORDER BY date_actual DESC, id DESC 
+                 LIMIT $3`
+		args = append(args, *lastDate, lastID, limit)
+	} else {
+		query = `SELECT 
+                     id,
+                     title,
+                     date_actual,
+                     is_finished,
+                     media_type,
+                     media_genre,
+                     is_dropped,
+                     media_comment
+                 FROM 
+                     titles 
+                 ORDER BY 
+                     date_actual DESC, id DESC
+                 LIMIT $1`
+		args = append(args, limit)
+	}
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return parseRows(rows)
 }
 
 func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error) {

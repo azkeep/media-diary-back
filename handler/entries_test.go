@@ -12,36 +12,65 @@ import (
 func TestGetAllEntries(t *testing.T) {
 	tests := []struct {
 		name               string
-		mockEntries        []model.MediaEntry
+		mockCursorResp     *model.CursorResponse
+		mockErr            error
 		expectedStatusCode int
 		expectedCount      int
+		expectedHasMore    bool
 	}{
 		{
-			name:               "should return 200 OK and json list when media entries exist",
-			mockEntries:        []model.MediaEntry{sampleEntry},
+			name: "should return 200 OK and paginated response when entries exist",
+			mockCursorResp: &model.CursorResponse{
+				Data:       []model.MediaEntry{sampleEntry},
+				NextCursor: "encoded_cursor_string",
+				HasMore:    true,
+			},
+			mockErr:            nil,
 			expectedStatusCode: http.StatusOK,
 			expectedCount:      1,
+			expectedHasMore:    true,
 		},
 		{
-			name:               "should return 204 No Content when no media entries exist",
-			mockEntries:        []model.MediaEntry{},
-			expectedStatusCode: http.StatusNoContent,
+			name: "should return 200 OK with empty data array when no media entries exist",
+			mockCursorResp: &model.CursorResponse{
+				Data:       []model.MediaEntry{},
+				NextCursor: "",
+				HasMore:    false,
+			},
+			mockErr:            nil,
+			expectedStatusCode: http.StatusOK,
 			expectedCount:      0,
+			expectedHasMore:    false,
+		},
+		{
+			name:               "should return 500 Internal Server Error when service fails",
+			mockCursorResp:     nil,
+			mockErr:            fmt.Errorf("database query error"),
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedCount:      0,
+			expectedHasMore:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := setupTestServer(&mockService{entries: tt.mockEntries})
+			mux := setupTestServer(&mockService{
+				cursorResponse: tt.mockCursorResp,
+				err:            tt.mockErr,
+			})
 			req := httptest.NewRequest(http.MethodGet, "/api/entries/all", nil)
 			rec := httptest.NewRecorder()
 
 			mux.ServeHTTP(rec, req)
 
-			result := assertJSONSliceResponse[model.MediaEntry](t, rec, tt.expectedStatusCode, tt.expectedCount)
+			resp := assertCursorResponse(t,
+				rec,
+				tt.expectedStatusCode,
+				tt.expectedCount,
+				tt.expectedHasMore)
 
-			if len(result) > 0 && result[0].Title != sampleEntry.Title {
-				t.Errorf("got title %q, want %q", result[0].Title, sampleEntry.Title)
+			if resp != nil && len(resp.Data) > 0 && resp.Data[0].Title != sampleEntry.Title {
+				t.Errorf("got title %q, want %q", resp.Data[0].Title, sampleEntry.Title)
 			}
 		})
 	}
@@ -65,11 +94,11 @@ func TestGetEntriesByDate(t *testing.T) {
 			expectedCount:      1,
 		},
 		{
-			name:               "should return 204 No Content when date format is valid but no entries exist",
+			name:               "should return 200 OK with empty slice when date format is valid but no entries exist",
 			urlPath:            "/api/entries/date/2026-03-15",
 			mockEntries:        []model.MediaEntry{},
 			mockErr:            nil,
-			expectedStatusCode: http.StatusNoContent,
+			expectedStatusCode: http.StatusOK,
 			expectedCount:      0,
 		},
 		{

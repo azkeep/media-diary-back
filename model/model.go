@@ -34,6 +34,12 @@ type StatsResponse struct {
 	Total       int    `json:"total"`
 }
 
+type CursorResponse struct {
+	Data       []MediaEntry `json:"data"`
+	NextCursor string       `json:"next_cursor,omitempty"`
+	HasMore    bool         `json:"has_more"`
+}
+
 // LocalDate handles YYYY-MM-DD format for JSON and DB operations
 type LocalDate time.Time
 

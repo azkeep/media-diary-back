@@ -51,7 +51,26 @@ func (h *MediaHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
-	result, err := h.svc.GetAllMedia()
+	//result, err := h.svc.GetAllMedia()
+	//if err != nil {
+	//	log.Printf("Error fetching entries: %v", err)
+	//	http.Error(w, err.Error(), http.StatusInternalServerError)
+	//	return
+	//}
+	//
+	//sendJSON(w, result)
+
+	cursor := r.URL.Query().Get("cursor")
+	limitStr := r.URL.Query().Get("limit")
+
+	limit := 50
+	if limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil {
+			limit = parsed
+		}
+	}
+
+	result, err := h.svc.GetMediaPaginated(cursor, limit)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

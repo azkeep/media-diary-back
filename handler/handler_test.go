@@ -35,15 +35,19 @@ var (
 )
 
 type mockService struct {
-	entries     []model.MediaEntry
-	stats       *model.StatsResponse
-	statsExists bool
-	ratings     []model.MediaRating
-	err         error
+	entries        []model.MediaEntry
+	stats          *model.StatsResponse
+	statsExists    bool
+	ratings        []model.MediaRating
+	cursorResponse *model.CursorResponse
+	err            error
 }
 
 func (m *mockService) GetAllMedia() ([]model.MediaEntry, error) {
 	return m.entries, m.err
+}
+func (m *mockService) GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error) {
+	return m.cursorResponse, m.err
 }
 func (m *mockService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error) {
 	return m.entries, m.err
@@ -157,6 +161,41 @@ func assertSingleJSONResponse[T any](t *testing.T, rec *httptest.ResponseRecorde
 	var result T
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse JSON response: %v", err)
+	}
+
+	return &result
+}
+
+func assertCursorResponse(t *testing.T,
+	rec *httptest.ResponseRecorder,
+	wantStatus int,
+	wantCount int,
+	wantHasMore bool) *model.CursorResponse {
+	t.Helper()
+
+	if rec.Code != wantStatus {
+		t.Fatalf("got status code %d, want %d", rec.Code, wantStatus)
+	}
+
+	if wantStatus >= 400 {
+		return nil
+	}
+
+	if contentType := rec.Header().Get("Content-Type"); contentType != "application/json" {
+		t.Errorf("got content-type %q, want %q", contentType, "application/json")
+	}
+
+	var result model.CursorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON response: %v", err)
+	}
+
+	if len(result.Data) != wantCount {
+		t.Errorf("got %d entries data slice, want %d", len(result.Data), wantCount)
+	}
+
+	if result.HasMore != wantHasMore {
+		t.Errorf("got has_more %v, want %v", result.HasMore, wantHasMore)
 	}
 
 	return &result
