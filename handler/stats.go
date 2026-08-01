@@ -73,21 +73,3 @@ func (h *MediaHandler) ExportTitlesRating(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
-
-func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
-	searchTerm := r.PathValue("searchTerm")
-
-	if len(searchTerm) == 0 {
-		log.Printf("Empty search term")
-		http.Error(w, "Empty search term", http.StatusBadRequest)
-		return
-	}
-
-	result, err := h.svc.SearchEntries(searchTerm)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, result)
-}

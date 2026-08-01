@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const defaultPageLimit = 50
+
 func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request) {
 	daysStr := r.PathValue("days")
 	days, err := strconv.ParseInt(daysStr, 10, 64)
@@ -51,21 +53,12 @@ func (h *MediaHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
-	//result, err := h.svc.GetAllMedia()
-	//if err != nil {
-	//	log.Printf("Error fetching entries: %v", err)
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	//
-	//sendJSON(w, result)
-
 	cursor := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
 
-	limit := 50
+	limit := defaultPageLimit
 	if limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
 			limit = parsed
 		}
 	}
@@ -73,6 +66,30 @@ func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetMediaPaginated(cursor, limit)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, result)
+}
+
+func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
+	searchTerm := r.PathValue("searchTerm")
+	cursor := r.URL.Query().Get("cursor")
+	limitStr := r.URL.Query().Get("limit")
+
+	limit := 0
+	if limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil {
+			limit = parsed
+		}
+	} else if cursor != "" {
+		limit = defaultPageLimit
+	}
+
+	result, err := h.svc.SearchEntriesPaginated(searchTerm, cursor, limit)
+	if err != nil {
+		log.Printf("Error searching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

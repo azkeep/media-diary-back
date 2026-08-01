@@ -20,6 +20,9 @@ type MediaRepository interface {
 	FindAllUniqueTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportBatch(entries []model.MediaEntry) error
 	SearchEntries(searchTerm string) ([]model.MediaEntry, error)
+	SearchEntriesPaginated(searchTerm string, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
+	CountAllEntries() (int, error)
+	CountSearchEntries(searchTerm string) (int, error)
 }
 
 type postgresMediaRepository struct {
@@ -448,6 +451,83 @@ func (r *postgresMediaRepository) SearchEntries(searchTerm string) ([]model.Medi
 	}
 
 	return result, nil
+}
+
+func (r *postgresMediaRepository) SearchEntriesPaginated(searchTerm string, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error) {
+	pattern := fmt.Sprintf("%%%s%%", searchTerm)
+	var query string
+	var args []any
+
+	if lastDate != nil && lastID > 0 {
+		query = `SELECT 
+                     id,
+                     title,
+                     date_actual,
+                     is_finished,
+                     media_type,
+                     media_genre,
+                     is_dropped,
+                     media_comment
+                 FROM 
+                     titles 
+                 WHERE 
+                     (title ILIKE $1 
+                          OR media_comment ILIKE $1
+                          OR media_type ILIKE $1)
+                     AND (date_actual, id) < ($2, $3)
+                 ORDER BY
+                     date_actual DESC,
+                     id DESC
+                 LIMIT $4`
+		args = append(args, pattern, *lastDate, lastID, limit)
+	} else {
+		query = `SELECT 
+                     id,
+                     title,
+                     date_actual,
+                     is_finished,
+                     media_type,
+                     media_genre,
+                     is_dropped,
+                     media_comment
+                 FROM 
+                     titles 
+                 WHERE 
+                     title ILIKE $1 
+                          OR media_comment ILIKE $1
+                          OR media_type ILIKE $1
+                 ORDER BY
+                     date_actual DESC,
+                     id DESC
+                 LIMIT $2`
+		args = append(args, pattern, limit)
+	}
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return parseRows(rows)
+}
+
+func (r *postgresMediaRepository) CountAllEntries() (int, error) {
+	query := `SELECT COUNT(*) FROM titles`
+	var count int
+	err := r.db.QueryRow(query).Scan(&count)
+	return count, err
+}
+
+func (r *postgresMediaRepository) CountSearchEntries(searchTerm string) (int, error) {
+	query := `SELECT COUNT(*) 
+			  FROM titles 
+			  WHERE title ILIKE $1
+			      OR media_comment ILIKE $1
+			      OR media_type ILIKE $1`
+	pattern := fmt.Sprintf("%%%s%%", searchTerm)
+	var count int
+	err := r.db.QueryRow(query, pattern).Scan(&count)
+	return count, err
 }
 
 func parseRows(rows *sql.Rows) ([]model.MediaEntry, error) {

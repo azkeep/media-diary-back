@@ -28,7 +28,7 @@ type MediaService interface {
 	GetAllTitlesByRating(months int) ([]model.MediaRating, error)
 	ImportFromCSV(r io.Reader) error
 	ExportRatingsToCSV(w io.Writer, months int) error
-	SearchEntries(searchTerm string) ([]model.MediaEntry, error)
+	SearchEntriesPaginated(searchTerm string, cursor string, limit int) (*model.CursorResponse, error)
 }
 
 type CSVRow struct {
@@ -43,6 +43,12 @@ type CSVRow struct {
 
 type mediaService struct {
 	repo repository.MediaRepository
+}
+
+type parsedCursor struct {
+	LastDate   *model.LocalDate
+	LastID     int64
+	TotalCount *int
 }
 
 const (
@@ -69,27 +75,17 @@ func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*mode
 		limit = PageLimit
 	}
 
-	var lastDate *model.LocalDate
-	var lastID int64
+	pc := decodeCursor(encodedCursor)
 
-	if encodedCursor != "" {
-		decoded, err := base64.StdEncoding.DecodeString(encodedCursor)
-		if err != nil {
-			return nil, fmt.Errorf("invalid cursor format: %s", err)
-		}
-		parts := strings.Split(string(decoded), "_")
-		if len(parts) == 2 {
-			t, err := time.Parse(DateFormat, parts[0])
-			if err == nil {
-				ld := model.LocalDate(t)
-				lastDate = &ld
-			}
-			lastID, _ = strconv.ParseInt(parts[1], 10, 64)
+	if pc.TotalCount == nil {
+		count, err := s.repo.CountAllEntries()
+		if err == nil {
+			pc.TotalCount = &count
 		}
 	}
 
 	// Fetch 1 extra record to evaluate `HasMore` efficiently without a COUNT(*)
-	entries, err := s.repo.FindAllByCursor(lastDate, lastID, limit+1)
+	entries, err := s.repo.FindAllByCursor(pc.LastDate, pc.LastID, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +93,7 @@ func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*mode
 	hasMore := false
 	if len(entries) > limit {
 		hasMore = true
-		entries = entries[:limit] // trim extra record
+		entries = entries[:limit]
 	}
 
 	if entries == nil {
@@ -106,15 +102,14 @@ func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*mode
 
 	nextCursor := ""
 	if hasMore && len(entries) > 0 {
-		lastEntry := entries[len(entries)-1]
-		rawCursor := fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(DateFormat), lastEntry.ID)
-		nextCursor = base64.StdEncoding.EncodeToString([]byte(rawCursor))
+		nextCursor = encodeCursor(entries[len(entries)-1], pc.TotalCount)
 	}
 
 	return &model.CursorResponse{
 		Data:       entries,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
+		Total:      pc.TotalCount,
 	}, nil
 
 }
@@ -292,9 +287,70 @@ func (s *mediaService) ExportRatingsToCSV(w io.Writer, months int) error {
 	return writer.Error()
 }
 
-func (s *mediaService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
+func (s *mediaService) SearchEntriesPaginated(searchTerm string, encodedCursor string, limit int) (*model.CursorResponse, error) {
 	searchTerm = strings.TrimSpace(searchTerm)
-	return s.repo.SearchEntries(searchTerm)
+	if searchTerm == "" {
+		return &model.CursorResponse{
+			Data:    []model.MediaEntry{},
+			HasMore: false,
+		}, nil
+	}
+
+	if limit <= 0 {
+		entries, err := s.repo.SearchEntries(searchTerm)
+		if err != nil {
+			return nil, err
+		}
+		if entries == nil {
+			entries = []model.MediaEntry{}
+		}
+		total := len(entries)
+		return &model.CursorResponse{
+			Data:    entries,
+			HasMore: false,
+			Total:   &total,
+		}, nil
+	}
+
+	if limit > (PageLimit * 2) {
+		limit = PageLimit
+	}
+
+	pc := decodeCursor(encodedCursor)
+
+	if pc.TotalCount == nil {
+		count, err := s.repo.CountSearchEntries(searchTerm)
+		if err == nil {
+			pc.TotalCount = &count
+		}
+	}
+
+	entries, err := s.repo.SearchEntriesPaginated(searchTerm, pc.LastDate, pc.LastID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := false
+	if len(entries) > limit {
+		hasMore = true
+		entries = entries[:limit]
+	}
+
+	if entries == nil {
+		entries = []model.MediaEntry{}
+	}
+
+	nextCursor := ""
+	if hasMore && len(entries) > 0 {
+		nextCursor = encodeCursor(entries[len(entries)-1], pc.TotalCount)
+	}
+
+	return &model.CursorResponse{
+		Data:       entries,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Total:      pc.TotalCount,
+	}, nil
 }
 
 func calculateScores(ratings []model.MediaRating) {
@@ -402,4 +458,47 @@ func (r CSVRow) ToDomainModel() (*model.MediaEntry, error) {
 		IsDropped:  isDropped,
 		Comment:    commentPtr,
 	}, nil
+}
+
+func decodeCursor(encoded string) *parsedCursor {
+	if encoded == "" {
+		return &parsedCursor{}
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return &parsedCursor{}
+	}
+
+	parts := strings.Split(string(decoded), "_")
+	if len(parts) < 2 {
+		return &parsedCursor{}
+	}
+
+	res := &parsedCursor{}
+
+	if t, err := time.Parse(DateFormat, parts[0]); err == nil {
+		ld := model.LocalDate(t)
+		res.LastDate = &ld
+	}
+
+	res.LastID, _ = strconv.ParseInt(parts[1], 10, 64)
+
+	if len(parts) >= 3 {
+		if total, err := strconv.Atoi(parts[2]); err == nil {
+			res.TotalCount = &total
+		}
+	}
+
+	return res
+}
+
+func encodeCursor(lastEntry model.MediaEntry, totalCount *int) string {
+	var raw string
+	if totalCount != nil {
+		raw = fmt.Sprintf("%s_%d_%d", lastEntry.Date.Time().Format(DateFormat), lastEntry.ID, *totalCount)
+	} else {
+		raw = fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(DateFormat), lastEntry.ID)
+	}
+	return base64.StdEncoding.EncodeToString([]byte(raw))
 }
