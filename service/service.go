@@ -20,7 +20,7 @@ type MediaService interface {
 	GetAllMedia() ([]model.MediaEntry, error)
 	GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error)
 	GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error)
-	GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error)
+	GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error)
 	SaveBatch(entries []model.MediaEntry) error
 	UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error)
 	DeleteBatch(ids []int64) error
@@ -123,7 +123,7 @@ func (s *mediaService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry,
 	return s.repo.FindByDate(date)
 }
 
-func (s *mediaService) GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error) {
+func (s *mediaService) GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error) {
 	return s.repo.FindAllByDateGreaterThanEqualOrderByDateDesc(date)
 }
 
