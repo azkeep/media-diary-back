@@ -38,6 +38,7 @@ type CursorResponse struct {
 	Data       []MediaEntry `json:"data"`
 	NextCursor string       `json:"next_cursor,omitempty"`
 	HasMore    bool         `json:"has_more"`
+	Total      *int         `json:"total,omitempty"`
 }
 
 // LocalDate handles YYYY-MM-DD format for JSON and DB operations
