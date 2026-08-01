@@ -52,7 +52,7 @@ func (m *mockService) GetMediaPaginated(cursor string, limit int) (*model.Cursor
 func (m *mockService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error) {
 	return m.entries, m.err
 }
-func (m *mockService) GetMediaLaterThan(date model.LocalDate) ([]model.MediaEntry, error) {
+func (m *mockService) GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error) {
 	return m.entries, m.err
 }
 func (m *mockService) SaveBatch(entries []model.MediaEntry) error {

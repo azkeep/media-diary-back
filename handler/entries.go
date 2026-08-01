@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (h *MediaHandler) GetEntriesLaterThan(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request) {
 	daysStr := r.PathValue("days")
 	days, err := strconv.ParseInt(daysStr, 10, 64)
 	if err != nil {
@@ -20,7 +20,7 @@ func (h *MediaHandler) GetEntriesLaterThan(w http.ResponseWriter, r *http.Reques
 	targetDate := time.Now().AddDate(0, 0, -int(days))
 	ld := model.LocalDate(targetDate)
 
-	result, err := h.svc.GetMediaLaterThan(ld)
+	result, err := h.svc.GetMediaForNDays(ld)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
