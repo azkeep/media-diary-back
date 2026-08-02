@@ -13,7 +13,7 @@ func TestGetStats(t *testing.T) {
 	tests := []struct {
 		name               string
 		urlPath            string
-		mockStats          *model.StatsResponse
+		mockStats          *model.TitleStats
 		mockExists         bool
 		mockErr            error
 		expectedStatusCode int
@@ -64,7 +64,7 @@ func TestGetStats(t *testing.T) {
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
 
-			res := assertSingleJSONResponse[model.StatsResponse](t, rec, tt.expectedStatusCode)
+			res := assertSingleJSONResponse[model.TitleStats](t, rec, tt.expectedStatusCode)
 			if res != nil && res.Title != sampleStats.Title {
 				t.Errorf("got stats title %q, want %q", res.Title, sampleStats.Title)
 			}

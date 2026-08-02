@@ -27,7 +27,7 @@ func (h *MediaHandler) ImportCSV(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Starting CSV import process for file: %s", header.Filename)
 
-	if err := h.svc.ImportFromCSV(file); err != nil {
+	if err := h.svc.ImportCSV(file); err != nil {
 		log.Printf("CSV import failed: %v", err)
 		http.Error(w, fmt.Sprintf("Import failed: %v", err), http.StatusBadRequest)
 		return

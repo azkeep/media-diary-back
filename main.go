@@ -30,7 +30,7 @@ func main() {
 	log.Println("Database connection established.")
 
 	repo := repository.NewMediaRepository(dbConn)
-	svc := service.NewMediaService(repo)
+	svc := service.NewMediaService(repo, cfg)
 
 	mediaHandler := handler.NewMediaHandler(svc)
 

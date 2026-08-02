@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/azkeep/MediaDiary/backend-go/model"
 	"log"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 	"time"
 )
 
-func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) ListEntriesSince(w http.ResponseWriter, r *http.Request) {
 	daysStr := r.PathValue("days")
 	days, err := strconv.ParseInt(daysStr, 10, 64)
 	if err != nil {
@@ -22,7 +23,7 @@ func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request
 	targetDate := time.Now().AddDate(0, 0, -int(days))
 	ld := model.LocalDate(targetDate)
 
-	result, err := h.svc.GetMediaForNDaysPaginated(ld, cursor, limit)
+	result, err := h.svc.ListSincePaginated(ld, cursor, limit)
 	if err != nil {
 		log.Printf("Error fetching entries for N days: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -32,17 +33,17 @@ func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) ListEntriesByDate(w http.ResponseWriter, r *http.Request) {
 	dateStr := r.PathValue("date")
-	t, err := time.Parse("2006-01-02", dateStr)
+	t, err := time.Parse(model.DateFormat, dateStr)
 	if err != nil {
-		http.Error(w, "invalid date format, must be YYYY-MM-DD", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("invalid date format, must be %s", model.DateExpected), http.StatusBadRequest)
 		return
 	}
 	ld := model.LocalDate(t)
 
 	log.Printf("Fetching entries for date: %s", dateStr)
-	result, err := h.svc.GetMediaByDate(ld)
+	result, err := h.svc.ListByDate(ld)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -52,10 +53,10 @@ func (h *MediaHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) 
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 	cursor, limit := parsePaginationParams(r)
 
-	result, err := h.svc.GetMediaPaginated(cursor, limit)
+	result, err := h.svc.List(cursor, limit)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -69,7 +70,7 @@ func (h *MediaHandler) SearchEntries(w http.ResponseWriter, r *http.Request) {
 	searchTerm := r.PathValue("searchTerm")
 	cursor, limit := parsePaginationParams(r)
 
-	result, err := h.svc.SearchEntriesPaginated(searchTerm, cursor, limit)
+	result, err := h.svc.Search(searchTerm, cursor, limit)
 	if err != nil {
 		log.Printf("Error searching entries: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -79,7 +80,7 @@ func (h *MediaHandler) SearchEntries(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) SaveEntries(w http.ResponseWriter, r *http.Request) {
 	var entries []model.MediaEntry
 	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
 		http.Error(w, "invalid request body: expected array of entries", http.StatusBadRequest)
@@ -104,7 +105,7 @@ func (h *MediaHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%d entries added successfully", len(entries))
 }
 
-func (h *MediaHandler) EditEntries(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) UpdateEntries(w http.ResponseWriter, r *http.Request) {
 	var entries []model.MediaEntry
 	if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
 		http.Error(w, "invalid request body: expected array of entries", http.StatusBadRequest)
