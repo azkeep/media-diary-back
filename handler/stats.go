@@ -54,7 +54,7 @@ func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) ExportTitlesRating(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) GetTitlesRatingCSV(w http.ResponseWriter, r *http.Request) {
 	monStr := r.PathValue("months")
 
 	months, err := strconv.Atoi(monStr)

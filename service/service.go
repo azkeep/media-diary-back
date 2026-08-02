@@ -17,10 +17,11 @@ import (
 )
 
 type MediaService interface {
-	GetAllMedia() ([]model.MediaEntry, error)
+	//GetAllMedia() ([]model.MediaEntry, error)
 	GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error)
-	GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error)
+	GetMediaByDate(date model.LocalDate) (*model.CursorResponse, error)
 	GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error)
+	GetMediaForNDaysPaginated(date model.LocalDate, cursor string, limit int) (*model.CursorResponse, error)
 	SaveBatch(entries []model.MediaEntry) error
 	UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntry, error)
 	DeleteBatch(ids []int64) error
@@ -66,15 +67,12 @@ func NewMediaService(repo repository.MediaRepository) MediaService {
 	return &mediaService{repo: repo}
 }
 
-func (s *mediaService) GetAllMedia() ([]model.MediaEntry, error) {
-	return s.repo.FindAllByOrderByDateDesc()
-}
+//func (s *mediaService) GetAllMedia() ([]model.MediaEntry, error) {
+//	return s.repo.FindAllByOrderByDateDesc()
+//}
 
 func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*model.CursorResponse, error) {
-	if limit <= 0 || limit > (PageLimit*2) {
-		limit = PageLimit
-	}
-
+	limit = normalizeLimit(limit)
 	pc := decodeCursor(encodedCursor)
 
 	if pc.TotalCount == nil {
@@ -90,20 +88,9 @@ func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*mode
 		return nil, err
 	}
 
-	hasMore := false
-	if len(entries) > limit {
-		hasMore = true
-		entries = entries[:limit]
-	}
-
-	if entries == nil {
-		entries = []model.MediaEntry{}
-	}
-
-	nextCursor := ""
-	if hasMore && len(entries) > 0 {
-		nextCursor = encodeCursor(entries[len(entries)-1], pc.TotalCount)
-	}
+	hasMore := validateHasMore(entries, limit)
+	entries = truncateEntries(entries, limit)
+	nextCursor := resolveNextCursor(entries, hasMore, pc.TotalCount)
 
 	return &model.CursorResponse{
 		Data:       entries,
@@ -114,12 +101,53 @@ func (s *mediaService) GetMediaPaginated(encodedCursor string, limit int) (*mode
 
 }
 
-func (s *mediaService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error) {
-	return s.repo.FindByDate(date)
+func (s *mediaService) GetMediaByDate(date model.LocalDate) (*model.CursorResponse, error) {
+	entries, err := s.repo.FindByDate(date)
+	if err != nil {
+		return nil, err
+	}
+
+	entries = truncateEntries(entries, len(entries))
+
+	total := len(entries)
+	return &model.CursorResponse{
+		Data:       entries,
+		NextCursor: "",
+		HasMore:    false,
+		Total:      &total,
+	}, nil
 }
 
 func (s *mediaService) GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error) {
 	return s.repo.FindAllByDateGreaterThanEqualOrderByDateDesc(date)
+}
+
+func (s *mediaService) GetMediaForNDaysPaginated(date model.LocalDate, encodedCursor string, limit int) (*model.CursorResponse, error) {
+	limit = normalizeLimit(limit)
+	pc := decodeCursor(encodedCursor)
+
+	if pc.TotalCount == nil {
+		count, err := s.repo.CountEntriesForNDays(date)
+		if err == nil {
+			pc.TotalCount = &count
+		}
+	}
+
+	entries, err := s.repo.FindAllByDateGreaterThanEqualPaginated(date, pc.LastDate, pc.LastID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := validateHasMore(entries, limit)
+	entries = truncateEntries(entries, limit)
+	nextCursor := resolveNextCursor(entries, hasMore, pc.TotalCount)
+
+	return &model.CursorResponse{
+		Data:       entries,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Total:      pc.TotalCount,
+	}, nil
 }
 
 func (s *mediaService) SaveBatch(entries []model.MediaEntry) error {
@@ -301,10 +329,10 @@ func (s *mediaService) SearchEntriesPaginated(searchTerm string, encodedCursor s
 		if err != nil {
 			return nil, err
 		}
-		if entries == nil {
-			entries = []model.MediaEntry{}
-		}
+
+		entries = truncateEntries(entries, len(entries))
 		total := len(entries)
+
 		return &model.CursorResponse{
 			Data:    entries,
 			HasMore: false,
@@ -312,10 +340,7 @@ func (s *mediaService) SearchEntriesPaginated(searchTerm string, encodedCursor s
 		}, nil
 	}
 
-	if limit > (PageLimit * 2) {
-		limit = PageLimit
-	}
-
+	limit = normalizeLimit(limit)
 	pc := decodeCursor(encodedCursor)
 
 	if pc.TotalCount == nil {
@@ -330,20 +355,9 @@ func (s *mediaService) SearchEntriesPaginated(searchTerm string, encodedCursor s
 		return nil, err
 	}
 
-	hasMore := false
-	if len(entries) > limit {
-		hasMore = true
-		entries = entries[:limit]
-	}
-
-	if entries == nil {
-		entries = []model.MediaEntry{}
-	}
-
-	nextCursor := ""
-	if hasMore && len(entries) > 0 {
-		nextCursor = encodeCursor(entries[len(entries)-1], pc.TotalCount)
-	}
+	hasMore := validateHasMore(entries, limit)
+	entries = truncateEntries(entries, limit)
+	nextCursor := resolveNextCursor(entries, hasMore, pc.TotalCount)
 
 	return &model.CursorResponse{
 		Data:       entries,
@@ -501,4 +515,32 @@ func encodeCursor(lastEntry model.MediaEntry, totalCount *int) string {
 		raw = fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(DateFormat), lastEntry.ID)
 	}
 	return base64.StdEncoding.EncodeToString([]byte(raw))
+}
+
+func validateHasMore(entries []model.MediaEntry, limit int) bool {
+	return len(entries) > limit
+}
+
+func truncateEntries(entries []model.MediaEntry, limit int) []model.MediaEntry {
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	if entries == nil {
+		return []model.MediaEntry{}
+	}
+	return entries
+}
+
+func resolveNextCursor(entries []model.MediaEntry, hasMore bool, totalCount *int) string {
+	if !hasMore || len(entries) == 0 {
+		return ""
+	}
+	return encodeCursor(entries[len(entries)-1], totalCount)
+}
+
+func normalizeLimit(limit int) int {
+	if limit <= 0 || limit > (PageLimit*2) {
+		return PageLimit
+	}
+	return limit
 }
