@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-const defaultPageLimit = 50
-
 func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request) {
 	daysStr := r.PathValue("days")
 	days, err := strconv.ParseInt(daysStr, 10, 64)
@@ -19,12 +17,14 @@ func (h *MediaHandler) GetEntriesForNDays(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	cursor, limit := parsePaginationParams(r)
+
 	targetDate := time.Now().AddDate(0, 0, -int(days))
 	ld := model.LocalDate(targetDate)
 
-	result, err := h.svc.GetMediaForNDays(ld)
+	result, err := h.svc.GetMediaForNDaysPaginated(ld, cursor, limit)
 	if err != nil {
-		log.Printf("Error fetching entries: %v", err)
+		log.Printf("Error fetching entries for N days: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -53,15 +53,7 @@ func (h *MediaHandler) GetEntriesByDate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
-	cursor := r.URL.Query().Get("cursor")
-	limitStr := r.URL.Query().Get("limit")
-
-	limit := defaultPageLimit
-	if limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
+	cursor, limit := parsePaginationParams(r)
 
 	result, err := h.svc.GetMediaPaginated(cursor, limit)
 	if err != nil {
@@ -73,19 +65,9 @@ func (h *MediaHandler) GetAllEntries(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) SearchTitles(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) SearchEntries(w http.ResponseWriter, r *http.Request) {
 	searchTerm := r.PathValue("searchTerm")
-	cursor := r.URL.Query().Get("cursor")
-	limitStr := r.URL.Query().Get("limit")
-
-	limit := 0
-	if limitStr != "" {
-		if parsed, err := strconv.Atoi(limitStr); err == nil {
-			limit = parsed
-		}
-	} else if cursor != "" {
-		limit = defaultPageLimit
-	}
+	cursor, limit := parsePaginationParams(r)
 
 	result, err := h.svc.SearchEntriesPaginated(searchTerm, cursor, limit)
 	if err != nil {

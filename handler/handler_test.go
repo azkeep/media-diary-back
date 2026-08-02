@@ -49,11 +49,14 @@ func (m *mockService) GetAllMedia() ([]model.MediaEntry, error) {
 func (m *mockService) GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error) {
 	return m.cursorResponse, m.err
 }
-func (m *mockService) GetMediaByDate(date model.LocalDate) ([]model.MediaEntry, error) {
-	return m.entries, m.err
+func (m *mockService) GetMediaByDate(date model.LocalDate) (*model.CursorResponse, error) {
+	return m.cursorResponse, m.err
 }
 func (m *mockService) GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error) {
 	return m.entries, m.err
+}
+func (m *mockService) GetMediaForNDaysPaginated(date model.LocalDate, encodedCursor string, limit int) (*model.CursorResponse, error) {
+	return m.cursorResponse, m.err
 }
 func (m *mockService) SaveBatch(entries []model.MediaEntry) error {
 	return m.err
@@ -82,6 +85,9 @@ func (m *mockService) ExportRatingsToCSV(w io.Writer, months int) error {
 }
 func (m *mockService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
 	return m.entries, m.err
+}
+func (m *mockService) SearchEntriesPaginated(searchTerm string, cursor string, limit int) (*model.CursorResponse, error) {
+	return m.cursorResponse, m.err
 }
 
 func setupTestServer(svc *mockService) *http.ServeMux {

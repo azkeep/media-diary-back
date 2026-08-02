@@ -11,6 +11,8 @@ type MediaRepository interface {
 	FindAllByOrderByDateDesc() ([]model.MediaEntry, error)
 	FindAllByCursor(lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	FindAllByDateGreaterThanEqualOrderByDateDesc(date model.LocalDate) ([]model.MediaEntry, error)
+	FindAllByDateGreaterThanEqualPaginated(targetDate model.LocalDate, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
+	CountEntriesForNDays(date model.LocalDate) (int, error)
 	FindByDate(date model.LocalDate) ([]model.MediaEntry, error)
 	ExistsByID(id int64) (bool, error)
 	SaveBatch(entries []model.MediaEntry) error
@@ -128,6 +130,60 @@ func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualOrderByDateDesc(d
 	}
 
 	return result, nil
+}
+
+func (r *postgresMediaRepository) FindAllByDateGreaterThanEqualPaginated(targetDate model.LocalDate, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error) {
+	var query string
+	var args []any
+
+	if lastDate != nil && lastID > 0 {
+		query = `SELECT id, 
+       		          title, 
+       		          date_actual, 
+       		          is_finished, 
+       		          media_type, 
+       		          media_genre,
+       		          is_dropped,
+       		          media_comment 
+				  FROM titles
+				  WHERE date_actual >= $1
+				      AND (date_actual, id) < ($2, $3)
+				  ORDER BY 
+				      date_actual DESC, 
+				      id DESC
+				  LIMIT $4`
+		args = append(args, targetDate, *lastDate, lastID, limit)
+	} else {
+		query = `SELECT id, 
+       		          title, 
+       		          date_actual, 
+       		          is_finished, 
+       		          media_type, 
+       		          media_genre,
+       		          is_dropped,
+       		          media_comment 
+				  FROM titles
+				  WHERE date_actual >= $1
+				  ORDER BY 
+				      date_actual DESC, 
+				      id DESC
+				  LIMIT $2`
+		args = append(args, targetDate, limit)
+	}
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return parseRows(rows)
+}
+
+func (r *postgresMediaRepository) CountEntriesForNDays(date model.LocalDate) (int, error) {
+	query := `SELECT COUNT(*) FROM titles WHERE date_actual >= $1`
+	var count int
+	err := r.db.QueryRow(query, date).Scan(&count)
+	return count, err
 }
 
 func (r *postgresMediaRepository) FindByDate(date model.LocalDate) ([]model.MediaEntry, error) {
