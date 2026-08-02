@@ -50,6 +50,7 @@ type MediaService interface {
 	ListByDate(date model.LocalDate) (*model.PagedResult, error)
 	ListSince(date model.LocalDate) ([]model.MediaEntry, error)
 	ListSincePaginated(date model.LocalDate, cursor string, limit int) (*model.PagedResult, error)
+	ListBetween(startDate model.LocalDate, finishDate model.LocalDate, encodedCursor string, limit int) (*model.PagedResult, error)
 	Search(searchTerm string, cursor string, limit int) (*model.PagedResult, error)
 
 	// Analytics & Aggregations
@@ -136,6 +137,40 @@ func (s *mediaService) ListSincePaginated(date model.LocalDate, encodedCursor st
 	}
 
 	entries, err := s.repo.ListSincePaginated(date, pc.LastDate, pc.LastID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := validateHasMore(entries, limit)
+	entries = truncateEntries(entries, limit)
+	nextCursor := resolveNextCursor(entries, hasMore, pc.TotalCount)
+
+	return &model.PagedResult{
+		Data:       entries,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Total:      pc.TotalCount,
+	}, nil
+}
+
+func (s *mediaService) ListBetween(
+	startDate model.LocalDate,
+	finishDate model.LocalDate,
+
+	encodedCursor string,
+	limit int) (*model.PagedResult, error) {
+
+	limit = s.normalizeLimit(limit)
+	pc := decodeCursor(encodedCursor)
+
+	if pc.TotalCount == nil {
+		count, err := s.repo.CountBetween(startDate, finishDate)
+		if err == nil {
+			pc.TotalCount = &count
+		}
+	}
+
+	entries, err := s.repo.ListBetween(startDate, finishDate, pc.LastDate, pc.LastID, limit+1)
 	if err != nil {
 		return nil, err
 	}

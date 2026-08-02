@@ -58,6 +58,9 @@ func (m *mockService) ListSince(date model.LocalDate) ([]model.MediaEntry, error
 func (m *mockService) ListSincePaginated(date model.LocalDate, encodedCursor string, limit int) (*model.PagedResult, error) {
 	return m.cursorResponse, m.err
 }
+func (m *mockService) ListBetween(startDate model.LocalDate, finishDate model.LocalDate, encodedCursor string, limit int) (*model.PagedResult, error) {
+	return m.cursorResponse, m.err
+}
 func (m *mockService) SaveBatch(entries []model.MediaEntry) error {
 	return m.err
 }
