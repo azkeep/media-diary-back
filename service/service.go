@@ -457,9 +457,9 @@ func (r CSVRow) ToDomainModel() (*model.MediaEntry, error) {
 	}
 
 	dateStr := strings.TrimSpace(r.DateRaw)
-	parsedTime, err := time.Parse(model.DateImportFormat, dateStr)
+	parsedTime, err := time.Parse(model.DateIncomingFormat, dateStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid date: %s (expected %s)", r.DateRaw, model.DateImportExpected)
+		return nil, fmt.Errorf("invalid date: %s (expected %s)", r.DateRaw, model.DateIncomingExpected)
 	}
 
 	var isFinished bool

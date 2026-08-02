@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	DateImportFormat   = "02.01.2006"
-	DateImportExpected = "DD.MM.YYYY"
-	DateFormat         = "2006-01-02"
-	DateExpected       = "YYYY-MM-DD"
+	DateIncomingFormat   = "02.01.2006"
+	DateIncomingExpected = "DD.MM.YYYY"
+	DateFormat           = "2006-01-02"
+	DateExpected         = "YYYY-MM-DD"
 )
 
 type MediaEntry struct {
