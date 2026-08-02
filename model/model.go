@@ -6,15 +6,22 @@ import (
 	"time"
 )
 
+const (
+	DateImportFormat   = "02.01.2006"
+	DateImportExpected = "DD.MM.YYYY"
+	DateFormat         = "2006-01-02"
+	DateExpected       = "YYYY-MM-DD"
+)
+
 type MediaEntry struct {
 	ID         int64     `json:"id"`
 	Date       LocalDate `json:"date"`
 	Title      string    `json:"title"`
 	IsFinished bool      `json:"isFinished"`
-	Type       *string   `json:"type"`
-	Genre      *string   `json:"genre"`
+	Type       *string   `json:"type,omitempty"`
+	Genre      *string   `json:"genre,omitempty"`
 	IsDropped  bool      `json:"isDropped"`
-	Comment    *string   `json:"comment"`
+	Comment    *string   `json:"comment,omitempty"`
 }
 
 type MediaRating struct {
@@ -25,19 +32,19 @@ type MediaRating struct {
 	Rating   int    `json:"rating"`
 }
 
-type StatsResponse struct {
+type TitleStats struct {
 	Title       string `json:"title"`
-	Last3days   int    `json:"last_3_days"`
-	Last7days   int    `json:"last_7_days"`
-	Last30days  int    `json:"last_30_days"`
-	Last180days int    `json:"last_180_days"`
+	Last3days   int    `json:"last3Days"`
+	Last7days   int    `json:"last7Days"`
+	Last30days  int    `json:"last30Days"`
+	Last180days int    `json:"last180Days"`
 	Total       int    `json:"total"`
 }
 
-type CursorResponse struct {
+type PagedResult struct {
 	Data       []MediaEntry `json:"data"`
-	NextCursor string       `json:"next_cursor,omitempty"`
-	HasMore    bool         `json:"has_more"`
+	NextCursor string       `json:"nextCursor,omitempty"`
+	HasMore    bool         `json:"hasMore"`
 	Total      *int         `json:"total,omitempty"`
 }
 
@@ -53,7 +60,7 @@ func (ld LocalDate) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte("null"), nil
 	}
-	return []byte(fmt.Sprintf(`"%s"`, t.Format("2006-01-02"))), nil
+	return []byte(fmt.Sprintf(`"%s"`, t.Format(DateImportFormat))), nil
 }
 
 func (ld *LocalDate) UnmarshalJSON(data []byte) error {
@@ -64,7 +71,7 @@ func (ld *LocalDate) UnmarshalJSON(data []byte) error {
 	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
 		str = str[1 : len(str)-1]
 	}
-	t, err := time.Parse("2006-01-02", str)
+	t, err := time.Parse(DateImportFormat, str)
 	if err != nil {
 		return err
 	}
@@ -76,12 +83,20 @@ func (ld *LocalDate) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
-	t, ok := value.(time.Time)
-	if !ok {
+	switch v := value.(type) {
+	case time.Time:
+		*ld = LocalDate(v)
+		return nil
+	case string:
+		t, err := time.Parse(DateImportFormat, v)
+		if err != nil {
+			return err
+		}
+		*ld = LocalDate(t)
+		return nil
+	default:
 		return fmt.Errorf("invalid type for LocalDate scan: %T", value)
 	}
-	*ld = LocalDate(t)
-	return nil
 }
 
 func (ld LocalDate) Value() (driver.Value, error) {

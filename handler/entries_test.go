@@ -12,7 +12,7 @@ import (
 func TestGetAllEntries(t *testing.T) {
 	tests := []struct {
 		name               string
-		mockCursorResp     *model.CursorResponse
+		mockCursorResp     *model.PagedResult
 		mockErr            error
 		expectedStatusCode int
 		expectedCount      int
@@ -20,7 +20,7 @@ func TestGetAllEntries(t *testing.T) {
 	}{
 		{
 			name: "should return 200 OK and paginated response when entries exist",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{sampleEntry},
 				NextCursor: "encoded_cursor_string",
 				HasMore:    true,
@@ -32,7 +32,7 @@ func TestGetAllEntries(t *testing.T) {
 		},
 		{
 			name: "should return 200 OK with empty data array when no media entries exist",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{},
 				NextCursor: "",
 				HasMore:    false,
@@ -80,7 +80,7 @@ func TestGetEntriesByDate(t *testing.T) {
 	tests := []struct {
 		name               string
 		urlPath            string
-		mockCursorResp     *model.CursorResponse
+		mockCursorResp     *model.PagedResult
 		mockErr            error
 		expectedStatusCode int
 		expectedCount      int
@@ -89,7 +89,7 @@ func TestGetEntriesByDate(t *testing.T) {
 		{
 			name:    "should return 200 OK and json entries when date format is valid and entries exist",
 			urlPath: "/api/entries/date/2026-03-15",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{sampleEntry},
 				NextCursor: "",
 				HasMore:    false,
@@ -102,7 +102,7 @@ func TestGetEntriesByDate(t *testing.T) {
 		{
 			name:    "should return 200 OK with empty slice when date format is valid but no entries exist",
 			urlPath: "/api/entries/date/2026-03-15",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{},
 				NextCursor: "",
 				HasMore:    false,
@@ -160,7 +160,7 @@ func TestGetEntriesLaterThan(t *testing.T) {
 	tests := []struct {
 		name               string
 		daysParam          string
-		mockCursorResp     *model.CursorResponse
+		mockCursorResp     *model.PagedResult
 		mockErr            error
 		expectedStatusCode int
 		expectedCount      int
@@ -169,7 +169,7 @@ func TestGetEntriesLaterThan(t *testing.T) {
 		{
 			name:      "should return 200 OK when days parameter is valid integer",
 			daysParam: "30",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{sampleEntry},
 				NextCursor: "encoded_cursor_string",
 				HasMore:    true,
@@ -228,7 +228,7 @@ func TestSearchTitles(t *testing.T) {
 	tests := []struct {
 		name               string
 		searchTerm         string
-		mockCursorResp     *model.CursorResponse
+		mockCursorResp     *model.PagedResult
 		mockErr            error
 		expectedStatusCode int
 		expectedCount      int
@@ -237,7 +237,7 @@ func TestSearchTitles(t *testing.T) {
 		{
 			name:       "should return 200 OK when search term yields results",
 			searchTerm: "matrix",
-			mockCursorResp: &model.CursorResponse{
+			mockCursorResp: &model.PagedResult{
 				Data:       []model.MediaEntry{sampleEntry},
 				NextCursor: "encoded_cursor_string",
 				HasMore:    true,

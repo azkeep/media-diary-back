@@ -3,13 +3,15 @@ package service
 import (
 	"errors"
 	"fmt"
-	"github.com/azkeep/MediaDiary/backend-go/model"
-	"github.com/azkeep/MediaDiary/backend-go/repository"
 	"io"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/azkeep/MediaDiary/backend-go/config"
+	"github.com/azkeep/MediaDiary/backend-go/model"
+	"github.com/azkeep/MediaDiary/backend-go/repository"
 )
 
 type mockRepository struct {
@@ -18,7 +20,16 @@ type mockRepository struct {
 	importErr       error
 }
 
-func (m *mockRepository) ImportBatch(entries []model.MediaEntry) error {
+func newTestConfig() *config.Config {
+	return &config.Config{
+		DefaultPageLimit: 50,
+		MaxPageLimit:     100,
+		ExportDir:        "test_export",
+		ExportDirPerm:    0755,
+	}
+}
+
+func (m *mockRepository) Import(entries []model.MediaEntry) error {
 	m.importedEntries = entries
 	return m.importErr
 }
@@ -99,11 +110,12 @@ func TestImportFromCSV(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := &mockRepository{importErr: tt.repoErr}
-			svc := NewMediaService(mockRepo)
+			testCfg := newTestConfig()
+			svc := NewMediaService(mockRepo, testCfg)
 
-			err := svc.ImportFromCSV(tt.reader)
+			err := svc.ImportCSV(tt.reader)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("ImportFromCSV() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("ImportCSV() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if !tt.wantErr {
@@ -215,7 +227,7 @@ func TestCSVRow_ToDomainModel(t *testing.T) {
 					t.Errorf("got isDropped %v, expected %v", got.IsDropped, isDroppedExpected)
 				}
 
-				expectedDate, _ := time.Parse(DateFormat, tt.row.DateRaw)
+				expectedDate, _ := time.Parse(model.DateImportFormat, tt.row.DateRaw)
 				if got.Date.Time() != expectedDate {
 					t.Errorf("got date %v, expected %v", got.Date.Time(), expectedDate)
 				}

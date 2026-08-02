@@ -16,7 +16,7 @@ func (h *MediaHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, exists, err := h.svc.GetTitleStats(title)
+	stats, exists, err := h.svc.GetStats(title)
 	if err != nil {
 		log.Printf("Error pulling metadata statistics for %s: %v", title, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -34,7 +34,7 @@ func (h *MediaHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) GetRatings(w http.ResponseWriter, r *http.Request) {
 	monStr := r.PathValue("months")
 
 	months, err := strconv.Atoi(monStr)
@@ -43,7 +43,7 @@ func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.GetAllTitlesByRating(months)
+	result, err := h.svc.GetRatings(months)
 
 	if err != nil {
 		log.Printf("Error fetching titles: %v", err)
@@ -54,7 +54,7 @@ func (h *MediaHandler) GetTitlesRating(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) GetTitlesRatingCSV(w http.ResponseWriter, r *http.Request) {
+func (h *MediaHandler) ExportRatingsCSV(w http.ResponseWriter, r *http.Request) {
 	monStr := r.PathValue("months")
 
 	months, err := strconv.Atoi(monStr)
@@ -67,7 +67,7 @@ func (h *MediaHandler) GetTitlesRatingCSV(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
-	if err := h.svc.ExportRatingsToCSV(w, months); err != nil {
+	if err := h.svc.ExportRatingsCSV(w, months); err != nil {
 		log.Printf("Error exporting ratings to CSV: %v", err)
 		http.Error(w, "Failed to export CSV", http.StatusInternalServerError)
 		return

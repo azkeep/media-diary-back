@@ -23,7 +23,7 @@ var (
 		Type:       &movieType,
 	}
 
-	sampleStats = model.StatsResponse{
+	sampleStats = model.TitleStats{
 		Title: "Matrix",
 		Total: 5,
 	}
@@ -36,26 +36,26 @@ var (
 
 type mockService struct {
 	entries        []model.MediaEntry
-	stats          *model.StatsResponse
+	stats          *model.TitleStats
 	statsExists    bool
 	ratings        []model.MediaRating
-	cursorResponse *model.CursorResponse
+	cursorResponse *model.PagedResult
 	err            error
 }
 
 func (m *mockService) GetAllMedia() ([]model.MediaEntry, error) {
 	return m.entries, m.err
 }
-func (m *mockService) GetMediaPaginated(cursor string, limit int) (*model.CursorResponse, error) {
+func (m *mockService) List(cursor string, limit int) (*model.PagedResult, error) {
 	return m.cursorResponse, m.err
 }
-func (m *mockService) GetMediaByDate(date model.LocalDate) (*model.CursorResponse, error) {
+func (m *mockService) ListByDate(date model.LocalDate) (*model.PagedResult, error) {
 	return m.cursorResponse, m.err
 }
-func (m *mockService) GetMediaForNDays(date model.LocalDate) ([]model.MediaEntry, error) {
+func (m *mockService) ListSince(date model.LocalDate) ([]model.MediaEntry, error) {
 	return m.entries, m.err
 }
-func (m *mockService) GetMediaForNDaysPaginated(date model.LocalDate, encodedCursor string, limit int) (*model.CursorResponse, error) {
+func (m *mockService) ListSincePaginated(date model.LocalDate, encodedCursor string, limit int) (*model.PagedResult, error) {
 	return m.cursorResponse, m.err
 }
 func (m *mockService) SaveBatch(entries []model.MediaEntry) error {
@@ -67,16 +67,16 @@ func (m *mockService) UpdateBatch(entries []model.MediaEntry) ([]model.MediaEntr
 func (m *mockService) DeleteBatch(ids []int64) error {
 	return m.err
 }
-func (m *mockService) GetTitleStats(title string) (*model.StatsResponse, bool, error) {
+func (m *mockService) GetStats(title string) (*model.TitleStats, bool, error) {
 	return m.stats, m.statsExists, m.err
 }
-func (m *mockService) GetAllTitlesByRating(months int) ([]model.MediaRating, error) {
+func (m *mockService) GetRatings(months int) ([]model.MediaRating, error) {
 	return m.ratings, m.err
 }
-func (m *mockService) ImportFromCSV(r io.Reader) error {
+func (m *mockService) ImportCSV(r io.Reader) error {
 	return m.err
 }
-func (m *mockService) ExportRatingsToCSV(w io.Writer, months int) error {
+func (m *mockService) ExportRatingsCSV(w io.Writer, months int) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -86,7 +86,7 @@ func (m *mockService) ExportRatingsToCSV(w io.Writer, months int) error {
 func (m *mockService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
 	return m.entries, m.err
 }
-func (m *mockService) SearchEntriesPaginated(searchTerm string, cursor string, limit int) (*model.CursorResponse, error) {
+func (m *mockService) Search(searchTerm string, cursor string, limit int) (*model.PagedResult, error) {
 	return m.cursorResponse, m.err
 }
 
@@ -176,7 +176,7 @@ func assertCursorResponse(t *testing.T,
 	rec *httptest.ResponseRecorder,
 	wantStatus int,
 	wantCount int,
-	wantHasMore bool) *model.CursorResponse {
+	wantHasMore bool) *model.PagedResult {
 	t.Helper()
 
 	if rec.Code != wantStatus {
@@ -191,7 +191,7 @@ func assertCursorResponse(t *testing.T,
 		t.Errorf("got content-type %q, want %q", contentType, "application/json")
 	}
 
-	var result model.CursorResponse
+	var result model.PagedResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse JSON response: %v", err)
 	}
