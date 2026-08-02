@@ -30,6 +30,7 @@ type MediaRepository interface {
 	SearchPaginated(searchTerm string, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	GetStats(title string) (*model.TitleStats, bool, error)
 	GetRatings(months int) ([]model.MediaRating, error)
+	GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error)
 }
 
 type postgresMediaRepository struct {
@@ -636,6 +637,53 @@ func (r *postgresMediaRepository) GetRatings(months int) ([]model.MediaRating, e
 					t.media_type;`
 
 	rows, err := r.db.Query(query, months)
+	if err != nil {
+		return nil, err
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
+
+	var result []model.MediaRating
+	for rows.Next() {
+		var m model.MediaRating
+		err := rows.Scan(&m.Title, &m.Type, &m.Total, &m.Finished)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *postgresMediaRepository) GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error) {
+	query := `SELECT 
+    				t.title,
+					t.media_type,
+					COUNT(t.id) AS total,
+					COUNT(t.id) FILTER (WHERE is_finished) AS finished
+	          FROM 
+					titles AS t 
+	          WHERE
+					t.date_actual >= $1
+					AND t.date_actual <= $2
+	          GROUP BY 
+					t.title,
+					t.media_type
+			  HAVING
+					COUNT(t.id) < 999
+					AND COUNT(t.id) >= 1
+			  ORDER BY 
+					finished DESC,
+					total DESC,
+					t.media_type;`
+	rows, err := r.db.Query(query, startDate, finishDate)
 	if err != nil {
 		return nil, err
 	}

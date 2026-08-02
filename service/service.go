@@ -56,6 +56,7 @@ type MediaService interface {
 	// Analytics & Aggregations
 	GetStats(title string) (*model.TitleStats, bool, error)
 	GetRatings(months int) ([]model.MediaRating, error)
+	GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error)
 
 	// Mutation operations
 	SaveBatch(entries []model.MediaEntry) error
@@ -64,7 +65,8 @@ type MediaService interface {
 
 	// Data exchange operations
 	ImportCSV(r io.Reader) error
-	ExportRatingsCSV(w io.Writer, months int) error
+	ExportRatingsCSV(w io.Writer, months int) (string, error)
+	ExportRatingsCSVBetween(w io.Writer, startDate model.LocalDate, finishDate model.LocalDate) (string, error)
 }
 
 func NewMediaService(repo repository.MediaRepository, cfg *config.Config) MediaService {
@@ -156,7 +158,6 @@ func (s *mediaService) ListSincePaginated(date model.LocalDate, encodedCursor st
 func (s *mediaService) ListBetween(
 	startDate model.LocalDate,
 	finishDate model.LocalDate,
-
 	encodedCursor string,
 	limit int) (*model.PagedResult, error) {
 
@@ -245,6 +246,18 @@ func (s *mediaService) GetStats(title string) (*model.TitleStats, bool, error) {
 
 func (s *mediaService) GetRatings(months int) ([]model.MediaRating, error) {
 	ratings, err := s.repo.GetRatings(months)
+
+	if err != nil || len(ratings) == 0 {
+		return ratings, err
+	}
+
+	calculateScores(ratings)
+
+	return ratings, nil
+}
+
+func (s *mediaService) GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error) {
+	ratings, err := s.repo.GetRatingsBetween(startDate, finishDate)
 
 	if err != nil || len(ratings) == 0 {
 		return ratings, err
@@ -355,53 +368,33 @@ func (s *mediaService) ImportCSV(r io.Reader) error {
 	return s.repo.Import(parsedEntries)
 }
 
-func (s *mediaService) ExportRatingsCSV(w io.Writer, months int) error {
+func (s *mediaService) ExportRatingsCSV(w io.Writer, months int) (string, error) {
 	ratings, err := s.GetRatings(months)
 	if err != nil {
-		return fmt.Errorf("failed to fetch ratings: %w", err)
-	}
-
-	if err := os.MkdirAll(s.cfg.ExportDir, s.cfg.ExportDirPerm); err != nil {
-		return fmt.Errorf("failed to create `%s` directory: %w", s.cfg.ExportDir, err)
+		return "", fmt.Errorf("failed to fetch ratings: %w", err)
 	}
 
 	exportFileName := fmt.Sprintf("%s-ratings-last-%d-months.csv", time.Now().Format(s.cfg.ExportPrefixFormat), months)
-	exportFilePath := filepath.Join(s.cfg.ExportDir, exportFileName)
 
-	file, err := os.Create(exportFilePath)
+	err = s.exportRatingsToCSV(w, exportFileName, ratings)
+	return exportFileName, err
+}
+
+func (s *mediaService) ExportRatingsCSVBetween(w io.Writer, startDate model.LocalDate, finishDate model.LocalDate) (string, error) {
+	ratings, err := s.GetRatingsBetween(startDate, finishDate)
 	if err != nil {
-		return fmt.Errorf("failed to create local export file %s: %w", exportFilePath, err)
-	}
-	defer file.Close()
-
-	mw := io.MultiWriter(w, file)
-	writer := csv.NewWriter(mw)
-	writer.Comma = CSVComma
-
-	header := []string{"Title", "Type", "Total", "Finished", "Rating"}
-	if err := writer.Write(header); err != nil {
-		return fmt.Errorf("failed to write CSV header: %w", err)
+		return "", fmt.Errorf("failed to fetch ratings: %w", err)
 	}
 
-	if err := writer.Write([]string{}); err != nil {
-		return fmt.Errorf("failed to write empty line: %w", err)
-	}
+	exportFileName := fmt.Sprintf(
+		"%s-ratings-between-%s-and-%s.csv",
+		time.Now().Format(s.cfg.ExportPrefixFormat),
+		startDate.Time().Format(s.cfg.ExportRangeFormat),
+		finishDate.Time().Format(s.cfg.ExportRangeFormat),
+	)
 
-	for _, r := range ratings {
-		row := []string{
-			r.Title,
-			r.Type,
-			strconv.Itoa(r.Total),
-			strconv.Itoa(r.Finished),
-			strconv.Itoa(r.Rating),
-		}
-		if err := writer.Write(row); err != nil {
-			return fmt.Errorf("failed to write CSV row: %w", err)
-		}
-	}
-
-	writer.Flush()
-	return writer.Error()
+	err = s.exportRatingsToCSV(w, exportFileName, ratings)
+	return exportFileName, err
 }
 
 func calculateScores(ratings []model.MediaRating) {
@@ -580,4 +573,52 @@ func (s *mediaService) normalizeLimit(limit int) int {
 		return s.cfg.DefaultPageLimit
 	}
 	return limit
+}
+
+func (s *mediaService) exportRatingsToCSV(w io.Writer, fileName string, ratings []model.MediaRating) error {
+	exportDir := filepath.Clean(s.cfg.ExportDir)
+	if err := os.MkdirAll(exportDir, s.cfg.ExportDirPerm); err != nil {
+		return fmt.Errorf("failed to create `%s` directory: %w", exportDir, err)
+	}
+
+	exportFilePath := filepath.Join(exportDir, fileName)
+
+	file, err := os.Create(exportFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create local export file %s: %w", exportFilePath, err)
+	}
+	defer file.Close()
+
+	mw := io.MultiWriter(w, file)
+	writer := csv.NewWriter(mw)
+	writer.Comma = CSVComma
+
+	header := []string{"Title", "Type", "Total", "Finished", "Rating"}
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	if err := writer.Write([]string{}); err != nil {
+		return fmt.Errorf("failed to write empty line: %w", err)
+	}
+
+	for _, r := range ratings {
+		row := []string{
+			r.Title,
+			r.Type,
+			strconv.Itoa(r.Total),
+			strconv.Itoa(r.Finished),
+			strconv.Itoa(r.Rating),
+		}
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return err
+	}
+
+	return file.Sync()
 }

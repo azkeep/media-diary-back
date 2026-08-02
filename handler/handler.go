@@ -36,6 +36,8 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", h.GetStats)
 	mux.HandleFunc("GET /api/entries/ratings/{months}", h.GetRatings)
 	mux.HandleFunc("GET /api/entries/ratings/{months}/export", h.ExportRatingsCSV)
+	mux.HandleFunc("GET /api/entries/ratings/{startDate}/{finishDate}", h.GetRatingsBetween)
+	mux.HandleFunc("GET /api/entries/ratings/{startDate}/{finishDate}/export", h.ExportRatingsCSVBetween)
 
 	// Bulk Operations
 	mux.HandleFunc("POST /api/entries/import", h.ImportCSV)

@@ -76,15 +76,25 @@ func (m *mockService) GetStats(title string) (*model.TitleStats, bool, error) {
 func (m *mockService) GetRatings(months int) ([]model.MediaRating, error) {
 	return m.ratings, m.err
 }
+func (m *mockService) GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error) {
+	return m.ratings, m.err
+}
 func (m *mockService) ImportCSV(r io.Reader) error {
 	return m.err
 }
-func (m *mockService) ExportRatingsCSV(w io.Writer, months int) error {
+func (m *mockService) ExportRatingsCSV(w io.Writer, months int) (string, error) {
 	if m.err != nil {
-		return m.err
+		return "", m.err
 	}
 	_, err := w.Write([]byte("Title;Rating\nMatrix;10\n"))
-	return err
+	return "export.csv", err
+}
+func (m *mockService) ExportRatingsCSVBetween(w io.Writer, startDate model.LocalDate, finishDate model.LocalDate) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	_, err := w.Write([]byte("Title;Rating\nMatrix;10\n"))
+	return "export.csv", err
 }
 func (m *mockService) SearchEntries(searchTerm string) ([]model.MediaEntry, error) {
 	return m.entries, m.err
