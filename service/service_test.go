@@ -227,7 +227,7 @@ func TestCSVRow_ToDomainModel(t *testing.T) {
 					t.Errorf("got isDropped %v, expected %v", got.IsDropped, isDroppedExpected)
 				}
 
-				expectedDate, _ := time.Parse(model.DateImportFormat, tt.row.DateRaw)
+				expectedDate, _ := time.Parse(model.DateIncomingFormat, tt.row.DateRaw)
 				if got.Date.Time() != expectedDate {
 					t.Errorf("got date %v, expected %v", got.Date.Time(), expectedDate)
 				}

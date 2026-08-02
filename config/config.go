@@ -23,6 +23,7 @@ type Config struct {
 	ExportDir          string
 	ExportDirPerm      os.FileMode
 	ExportPrefixFormat string
+	ExportRangeFormat  string
 }
 
 func Load() *Config {
@@ -36,9 +37,10 @@ func Load() *Config {
 		AllowedOrigin:      getEnv("ALLOWED_ORIGIN", "http://localhost:3000"),
 		DefaultPageLimit:   getEnvAsInt("DEFAULT_PAGE_LIMIT", 50),
 		MaxPageLimit:       getEnvAsInt("MAX_PAGE_LIMIT", 100),
-		ExportDir:          getEnv("EXPORT_DIR", "/export"),
+		ExportDir:          getEnv("EXPORT_DIR", "./export"),
 		ExportDirPerm:      0755,
 		ExportPrefixFormat: getEnv("EXPORT_PREFIX_FORMAT", "20060102150405"),
+		ExportRangeFormat:  getEnv("EXPORT_RANGE_FORMAT", "20060102"),
 	}
 }
 

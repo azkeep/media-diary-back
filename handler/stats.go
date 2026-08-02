@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 func (h *MediaHandler) GetStats(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +45,36 @@ func (h *MediaHandler) GetRatings(w http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.GetRatings(months)
 
 	if err != nil {
-		log.Printf("Error fetching titles: %v", err)
+		log.Printf("Error fetching ratings: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, result)
+}
+
+func (h *MediaHandler) GetRatingsBetween(w http.ResponseWriter, r *http.Request) {
+	sd, err := parseDateParam(r, "startDate")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fd, err := parseDateParam(r, "finishDate")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if fd.Time().Before(sd.Time()) {
+		http.Error(w, fmt.Sprintf("finish date cannot be before start date"), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.svc.GetRatingsBetween(sd, fd)
+
+	if err != nil {
+		log.Printf("Error fetching ratings between %v and %v: %v", sd, fd, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -63,13 +91,43 @@ func (h *MediaHandler) ExportRatingsCSV(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	filename := fmt.Sprintf("%s-ratings-last-%d-months.csv", time.Now().Format("20060102150405"), months)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-
-	if err := h.svc.ExportRatingsCSV(w, months); err != nil {
+	filename, err := h.svc.ExportRatingsCSV(w, months)
+	if err != nil {
 		log.Printf("Error exporting ratings to CSV: %v", err)
 		http.Error(w, "Failed to export CSV", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+}
+
+func (h *MediaHandler) ExportRatingsCSVBetween(w http.ResponseWriter, r *http.Request) {
+	sd, err := parseDateParam(r, "startDate")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fd, err := parseDateParam(r, "finishDate")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if fd.Time().Before(sd.Time()) {
+		http.Error(w, fmt.Sprintf("finish date cannot be before start date"), http.StatusBadRequest)
+		return
+	}
+
+	filename, err := h.svc.ExportRatingsCSVBetween(w, sd, fd)
+	if err != nil {
+		log.Printf("Error exporting ratings to CSV: %v", err)
+		http.Error(w, "Failed to export CSV", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
 }

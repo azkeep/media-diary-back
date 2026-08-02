@@ -12,11 +12,13 @@ type MediaRepository interface {
 	ListPaginated(lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	ListSince(date model.LocalDate) ([]model.MediaEntry, error)
 	ListSincePaginated(targetDate model.LocalDate, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
+	ListBetween(startDate model.LocalDate, finishDate model.LocalDate, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	ListByDate(date model.LocalDate) ([]model.MediaEntry, error)
 
 	Count() (int, error)
 	CountSince(date model.LocalDate) (int, error)
 	CountSearch(searchTerm string) (int, error)
+	CountBetween(startDate model.LocalDate, finishDate model.LocalDate) (int, error)
 	Exists(id int64) (bool, error)
 
 	SaveBatch(entries []model.MediaEntry) error
@@ -28,6 +30,7 @@ type MediaRepository interface {
 	SearchPaginated(searchTerm string, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error)
 	GetStats(title string) (*model.TitleStats, bool, error)
 	GetRatings(months int) ([]model.MediaRating, error)
+	GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error)
 }
 
 type postgresMediaRepository struct {
@@ -63,7 +66,10 @@ func (r *postgresMediaRepository) List() ([]model.MediaEntry, error) {
 	return result, nil
 }
 
-func (r *postgresMediaRepository) ListPaginated(lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error) {
+func (r *postgresMediaRepository) ListPaginated(
+	lastDate *model.LocalDate,
+	lastID int64,
+	limit int) ([]model.MediaEntry, error) {
 	var query string
 	var args []any
 
@@ -135,7 +141,11 @@ func (r *postgresMediaRepository) ListSince(date model.LocalDate) ([]model.Media
 	return result, nil
 }
 
-func (r *postgresMediaRepository) ListSincePaginated(targetDate model.LocalDate, lastDate *model.LocalDate, lastID int64, limit int) ([]model.MediaEntry, error) {
+func (r *postgresMediaRepository) ListSincePaginated(
+	targetDate model.LocalDate,
+	lastDate *model.LocalDate,
+	lastID int64,
+	limit int) ([]model.MediaEntry, error) {
 	var query string
 	var args []any
 
@@ -172,6 +182,60 @@ func (r *postgresMediaRepository) ListSincePaginated(targetDate model.LocalDate,
 				      id DESC
 				  LIMIT $2`
 		args = append(args, targetDate, limit)
+	}
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return parseRows(rows)
+}
+
+func (r *postgresMediaRepository) ListBetween(
+	startDate model.LocalDate,
+	finishDate model.LocalDate,
+	lastDate *model.LocalDate,
+	lastID int64,
+	limit int) ([]model.MediaEntry, error) {
+	var query string
+	var args []any
+
+	if lastDate != nil && lastID > 0 {
+		query = `SELECT id, 
+       		          title, 
+       		          date_actual, 
+       		          is_finished, 
+       		          media_type, 
+       		          media_genre,
+       		          is_dropped,
+       		          media_comment 
+				  FROM titles
+				  WHERE date_actual >= $1
+				    AND date_actual <= $2
+				    AND (date_actual, id) < ($3, $4)
+				  ORDER BY 
+				      date_actual DESC, 
+				      id DESC
+				  LIMIT $5`
+		args = append(args, startDate, finishDate, *lastDate, lastID, limit)
+	} else {
+		query = `SELECT id, 
+       		          title, 
+       		          date_actual, 
+       		          is_finished, 
+       		          media_type, 
+       		          media_genre,
+       		          is_dropped,
+       		          media_comment 
+				  FROM titles
+				  WHERE date_actual >= $1
+				    AND date_actual <= $2
+				  ORDER BY 
+				      date_actual DESC, 
+				      id DESC
+				  LIMIT $3`
+		args = append(args, startDate, finishDate, limit)
 	}
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -230,6 +294,15 @@ func (r *postgresMediaRepository) CountSearch(searchTerm string) (int, error) {
 	pattern := fmt.Sprintf("%%%s%%", searchTerm)
 	var count int
 	err := r.db.QueryRow(query, pattern).Scan(&count)
+	return count, err
+}
+
+func (r *postgresMediaRepository) CountBetween(
+	startDate model.LocalDate,
+	finishDate model.LocalDate) (int, error) {
+	query := `SELECT COUNT(*) FROM titles WHERE date_actual >= $1 AND date_actual <= $2`
+	var count int
+	err := r.db.QueryRow(query, startDate, finishDate).Scan(&count)
 	return count, err
 }
 
@@ -564,6 +637,53 @@ func (r *postgresMediaRepository) GetRatings(months int) ([]model.MediaRating, e
 					t.media_type;`
 
 	rows, err := r.db.Query(query, months)
+	if err != nil {
+		return nil, err
+	}
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
+
+	var result []model.MediaRating
+	for rows.Next() {
+		var m model.MediaRating
+		err := rows.Scan(&m.Title, &m.Type, &m.Total, &m.Finished)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *postgresMediaRepository) GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error) {
+	query := `SELECT 
+    				t.title,
+					t.media_type,
+					COUNT(t.id) AS total,
+					COUNT(t.id) FILTER (WHERE is_finished) AS finished
+	          FROM 
+					titles AS t 
+	          WHERE
+					t.date_actual >= $1
+					AND t.date_actual <= $2
+	          GROUP BY 
+					t.title,
+					t.media_type
+			  HAVING
+					COUNT(t.id) < 999
+					AND COUNT(t.id) >= 1
+			  ORDER BY 
+					finished DESC,
+					total DESC,
+					t.media_type;`
+	rows, err := r.db.Query(query, startDate, finishDate)
 	if err != nil {
 		return nil, err
 	}

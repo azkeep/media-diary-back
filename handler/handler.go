@@ -2,10 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/azkeep/MediaDiary/backend-go/model"
 	"github.com/azkeep/MediaDiary/backend-go/service"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 const defaultPageLimit = 50
@@ -23,6 +26,7 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/entries/all", h.ListEntries)
 	mux.HandleFunc("GET /api/entries/date/{date}", h.ListEntriesByDate)
 	mux.HandleFunc("GET /api/entries/{days}", h.ListEntriesSince)
+	mux.HandleFunc("GET /api/entries/{startDate}/{finishDate}", h.ListEntriesBetween)
 	mux.HandleFunc("GET /api/entries/search/{searchTerm}", h.SearchEntries)
 	mux.HandleFunc("POST /api/entries", h.SaveEntries)
 	mux.HandleFunc("PUT /api/entries", h.UpdateEntries)
@@ -32,6 +36,8 @@ func (h *MediaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stats", h.GetStats)
 	mux.HandleFunc("GET /api/entries/ratings/{months}", h.GetRatings)
 	mux.HandleFunc("GET /api/entries/ratings/{months}/export", h.ExportRatingsCSV)
+	mux.HandleFunc("GET /api/entries/ratings/{startDate}/{finishDate}", h.GetRatingsBetween)
+	mux.HandleFunc("GET /api/entries/ratings/{startDate}/{finishDate}/export", h.ExportRatingsCSVBetween)
 
 	// Bulk Operations
 	mux.HandleFunc("POST /api/entries/import", h.ImportCSV)
@@ -67,4 +73,18 @@ func parsePaginationParams(r *http.Request) (string, int) {
 	}
 
 	return cursor, limit
+}
+
+func parseDateParam(r *http.Request, paramName string) (model.LocalDate, error) {
+	dateStr := r.PathValue(paramName)
+	if dateStr == "" {
+		return model.LocalDate{}, fmt.Errorf("missing path parameter %q", paramName)
+	}
+
+	t, err := time.Parse(model.DateFormat, dateStr)
+	if err != nil {
+		return model.LocalDate{}, fmt.Errorf("invalid date format for %q, expected %s", paramName, model.DateExpected)
+	}
+
+	return model.LocalDate(t), nil
 }

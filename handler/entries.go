@@ -33,16 +33,44 @@ func (h *MediaHandler) ListEntriesSince(w http.ResponseWriter, r *http.Request) 
 	sendJSON(w, result)
 }
 
-func (h *MediaHandler) ListEntriesByDate(w http.ResponseWriter, r *http.Request) {
-	dateStr := r.PathValue("date")
-	t, err := time.Parse(model.DateFormat, dateStr)
+func (h *MediaHandler) ListEntriesBetween(w http.ResponseWriter, r *http.Request) {
+	sd, err := parseDateParam(r, "startDate")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid date format, must be %s", model.DateExpected), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ld := model.LocalDate(t)
 
-	log.Printf("Fetching entries for date: %s", dateStr)
+	fd, err := parseDateParam(r, "finishDate")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if fd.Time().Before(sd.Time()) {
+		http.Error(w, fmt.Sprintf("finish date cannot be before start date"), http.StatusBadRequest)
+		return
+	}
+
+	cursor, limit := parsePaginationParams(r)
+
+	result, err := h.svc.ListBetween(sd, fd, cursor, limit)
+	if err != nil {
+		log.Printf("Error fetching entries between %v and %v: %v", sd, fd, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, result)
+}
+
+func (h *MediaHandler) ListEntriesByDate(w http.ResponseWriter, r *http.Request) {
+	ld, err := parseDateParam(r, "date")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Fetching entries for date: %v", ld)
 	result, err := h.svc.ListByDate(ld)
 	if err != nil {
 		log.Printf("Error fetching entries: %v", err)
