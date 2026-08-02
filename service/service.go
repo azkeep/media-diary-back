@@ -493,7 +493,7 @@ func decodeCursor(encoded string) *parsedCursor {
 
 	res := &parsedCursor{}
 
-	if t, err := time.Parse(model.DateImportFormat, parts[0]); err == nil {
+	if t, err := time.Parse(model.DateFormat, parts[0]); err == nil {
 		ld := model.LocalDate(t)
 		res.LastDate = &ld
 	}
@@ -512,9 +512,9 @@ func decodeCursor(encoded string) *parsedCursor {
 func encodeCursor(lastEntry model.MediaEntry, totalCount *int) string {
 	var raw string
 	if totalCount != nil {
-		raw = fmt.Sprintf("%s_%d_%d", lastEntry.Date.Time().Format(model.DateImportFormat), lastEntry.ID, *totalCount)
+		raw = fmt.Sprintf("%s_%d_%d", lastEntry.Date.Time().Format(model.DateFormat), lastEntry.ID, *totalCount)
 	} else {
-		raw = fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(model.DateImportFormat), lastEntry.ID)
+		raw = fmt.Sprintf("%s_%d", lastEntry.Date.Time().Format(model.DateFormat), lastEntry.ID)
 	}
 	return base64.StdEncoding.EncodeToString([]byte(raw))
 }

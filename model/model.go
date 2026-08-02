@@ -60,7 +60,7 @@ func (ld LocalDate) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte("null"), nil
 	}
-	return []byte(fmt.Sprintf(`"%s"`, t.Format(DateImportFormat))), nil
+	return []byte(fmt.Sprintf(`"%s"`, t.Format(DateFormat))), nil
 }
 
 func (ld *LocalDate) UnmarshalJSON(data []byte) error {
@@ -71,7 +71,7 @@ func (ld *LocalDate) UnmarshalJSON(data []byte) error {
 	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
 		str = str[1 : len(str)-1]
 	}
-	t, err := time.Parse(DateImportFormat, str)
+	t, err := time.Parse(DateFormat, str)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (ld *LocalDate) Scan(value interface{}) error {
 		*ld = LocalDate(v)
 		return nil
 	case string:
-		t, err := time.Parse(DateImportFormat, v)
+		t, err := time.Parse(DateFormat, v)
 		if err != nil {
 			return err
 		}
