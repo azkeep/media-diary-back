@@ -19,6 +19,7 @@ type MediaRepository interface {
 	CountSince(date model.LocalDate) (int, error)
 	CountSearch(searchTerm string) (int, error)
 	CountBetween(startDate model.LocalDate, finishDate model.LocalDate) (int, error)
+	CountTimelineDays() (int, error)
 	Exists(id int64) (bool, error)
 
 	SaveBatch(entries []model.MediaEntry) error
@@ -31,6 +32,8 @@ type MediaRepository interface {
 	GetStats(title string) (*model.TitleStats, bool, error)
 	GetRatings(months int) ([]model.MediaRating, error)
 	GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error)
+	GetTimelinePaginated(lastDate *model.LocalDate, limit int) ([]model.TimelineItem, error)
+	GetTimelineAll() ([]model.TimelineItem, error)
 }
 
 type postgresMediaRepository struct {
@@ -297,12 +300,17 @@ func (r *postgresMediaRepository) CountSearch(searchTerm string) (int, error) {
 	return count, err
 }
 
-func (r *postgresMediaRepository) CountBetween(
-	startDate model.LocalDate,
-	finishDate model.LocalDate) (int, error) {
+func (r *postgresMediaRepository) CountBetween(startDate model.LocalDate, finishDate model.LocalDate) (int, error) {
 	query := `SELECT COUNT(*) FROM titles WHERE date_actual >= $1 AND date_actual <= $2`
 	var count int
 	err := r.db.QueryRow(query, startDate, finishDate).Scan(&count)
+	return count, err
+}
+
+func (r *postgresMediaRepository) CountTimelineDays() (int, error) {
+	query := `SELECT COALESCE(CURRENT_DATE - MIN(date_actual) + 1, 1) FROM titles`
+	var count int
+	err := r.db.QueryRow(query).Scan(&count)
 	return count, err
 }
 
@@ -707,6 +715,89 @@ func (r *postgresMediaRepository) GetRatingsBetween(startDate model.LocalDate, f
 		return nil, err
 	}
 	return result, nil
+}
+
+func (r *postgresMediaRepository) GetTimelinePaginated(lastDate *model.LocalDate, limit int) ([]model.TimelineItem, error) {
+	var query string
+	var args []any
+
+	if lastDate != nil {
+		query = `WITH date_range AS (
+						SELECT 
+							COALESCE(MIN(date_actual), CURRENT_DATE) AS min_date,
+							CURRENT_DATE AS max_date
+						FROM titles
+				 )
+				 SELECT
+						d.day::date AS timeline_date,
+						EXISTS(SELECT 1 FROM titles AS t WHERE t.date_actual = d.day::date) AS has_media
+				 FROM date_range dr,
+				 GENERATE_SERIES(dr.min_date, dr.max_date, '1 day'::interval) AS d(day)
+				 WHERE d.day::date < $1
+				 ORDER BY timeline_date DESC
+				 LIMIT $2`
+		args = append(args, *lastDate, limit)
+	} else {
+		query = `WITH date_range AS (
+						SELECT 
+							COALESCE(MIN(date_actual), CURRENT_DATE) AS min_date,
+							CURRENT_DATE AS max_date
+						FROM titles
+						)
+					SELECT
+						d.day::date AS timeline_date,
+						EXISTS(SELECT 1 FROM titles AS t WHERE t.date_actual = d.day::date) AS has_media
+					FROM date_range dr,
+					GENERATE_SERIES(dr.min_date, dr.max_date, '1 day'::interval) AS d(day)
+					ORDER BY timeline_date DESC
+					LIMIT $1`
+		args = append(args, limit)
+	}
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []model.TimelineItem
+	for rows.Next() {
+		var item model.TimelineItem
+		if err := rows.Scan(&item.Date, &item.HasMedia); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (r *postgresMediaRepository) GetTimelineAll() ([]model.TimelineItem, error) {
+	query := `WITH date_range AS (
+						SELECT 
+							COALESCE(MIN(date_actual), CURRENT_DATE) AS min_date,
+							CURRENT_DATE AS max_date
+						FROM titles
+				 )
+				 SELECT
+						d.day::date AS timeline_date,
+						EXISTS(SELECT 1 FROM titles AS t WHERE t.date_actual = d.day::date) AS has_media
+				 FROM date_range dr,
+				 GENERATE_SERIES(dr.min_date, dr.max_date, '1 day'::interval) AS d(day)
+				 ORDER BY timeline_date DESC`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []model.TimelineItem
+	for rows.Next() {
+		var item model.TimelineItem
+		if err := rows.Scan(&item.Date, &item.HasMedia); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func parseRows(rows *sql.Rows) ([]model.MediaEntry, error) {

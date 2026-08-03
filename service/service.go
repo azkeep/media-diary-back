@@ -44,6 +44,11 @@ type parsedCursor struct {
 	TotalCount *int
 }
 
+type parsedTimelineCursor struct {
+	LastDate   *model.LocalDate
+	TotalCount *int
+}
+
 type MediaService interface {
 	// Query operations
 	List(cursor string, limit int) (*model.PagedResult, error)
@@ -57,6 +62,7 @@ type MediaService interface {
 	GetStats(title string) (*model.TitleStats, bool, error)
 	GetRatings(months int) ([]model.MediaRating, error)
 	GetRatingsBetween(startDate model.LocalDate, finishDate model.LocalDate) ([]model.MediaRating, error)
+	GetTimeline(encodedCursor string, limit int) (*model.TimelinePagedResult, error)
 
 	// Mutation operations
 	SaveBatch(entries []model.MediaEntry) error
@@ -67,6 +73,7 @@ type MediaService interface {
 	ImportCSV(r io.Reader) error
 	ExportRatingsCSV(w io.Writer, months int) (string, error)
 	ExportRatingsCSVBetween(w io.Writer, startDate model.LocalDate, finishDate model.LocalDate) (string, error)
+	ExportTimelineCSV(w io.Writer) (string, error)
 }
 
 func NewMediaService(repo repository.MediaRepository, cfg *config.Config) MediaService {
@@ -268,6 +275,40 @@ func (s *mediaService) GetRatingsBetween(startDate model.LocalDate, finishDate m
 	return ratings, nil
 }
 
+func (s *mediaService) GetTimeline(encodedCursor string, limit int) (*model.TimelinePagedResult, error) {
+	limit = s.normalizeLimit(limit)
+	pc := decodeTimelineCursor(encodedCursor)
+
+	if pc.TotalCount == nil {
+		count, err := s.repo.CountTimelineDays()
+		if err == nil {
+			pc.TotalCount = &count
+		}
+	}
+
+	items, err := s.repo.GetTimelinePaginated(pc.LastDate, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	nextCursor := ""
+	if hasMore && len(items) > 0 {
+		nextCursor = encodeTimelineCursor(items[len(items)-1].Date, pc.TotalCount)
+	}
+
+	return &model.TimelinePagedResult{
+		Data:       items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Total:      pc.TotalCount,
+	}, nil
+}
+
 func (s *mediaService) SaveBatch(entries []model.MediaEntry) error {
 	if len(entries) == 0 {
 		return errors.New("empty media entries")
@@ -395,6 +436,70 @@ func (s *mediaService) ExportRatingsCSVBetween(w io.Writer, startDate model.Loca
 
 	err = s.exportRatingsToCSV(w, exportFileName, ratings)
 	return exportFileName, err
+}
+
+func (s *mediaService) ExportTimelineCSV(w io.Writer) (string, error) {
+	items, err := s.repo.GetTimelineAll()
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch timeline items: %w", err)
+	}
+
+	fileName := fmt.Sprintf("%s-timeline-all.csv", time.Now().Format(s.cfg.ExportPrefixFormat))
+
+	writer, cleanup, err := s.createExportCSVWriter(w, fileName)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	for _, item := range items {
+		row := []string{
+			item.Date.Time().Format(model.DateFormat),
+			strconv.FormatBool(item.HasMedia),
+		}
+		if err := writer.Write(row); err != nil {
+			return "", fmt.Errorf("failed to write csv row: %w", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", err
+	}
+
+	return fileName, nil
+}
+
+func decodeTimelineCursor(encoded string) *parsedTimelineCursor {
+	if encoded == "" {
+		return &parsedTimelineCursor{}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return &parsedTimelineCursor{}
+	}
+	parts := strings.Split(string(decoded), "_")
+	res := &parsedTimelineCursor{}
+	if t, err := time.Parse(model.DateFormat, parts[0]); err == nil {
+		ld := model.LocalDate(t)
+		res.LastDate = &ld
+	}
+	if len(parts) >= 2 {
+		if total, err := strconv.Atoi(parts[1]); err == nil {
+			res.TotalCount = &total
+		}
+	}
+	return res
+}
+
+func encodeTimelineCursor(lastDate model.LocalDate, totalCount *int) string {
+	var raw string
+	if totalCount != nil {
+		raw = fmt.Sprintf("%s_%d", lastDate.Time().Format(model.DateFormat), *totalCount)
+	} else {
+		raw = lastDate.Time().Format(model.DateFormat)
+	}
+	return base64.StdEncoding.EncodeToString([]byte(raw))
 }
 
 func calculateScores(ratings []model.MediaRating) {
@@ -575,23 +680,40 @@ func (s *mediaService) normalizeLimit(limit int) int {
 	return limit
 }
 
-func (s *mediaService) exportRatingsToCSV(w io.Writer, fileName string, ratings []model.MediaRating) error {
+func (s *mediaService) createExportCSVWriter(w io.Writer, fileName string) (*csv.Writer, func() error, error) {
 	exportDir := filepath.Clean(s.cfg.ExportDir)
 	if err := os.MkdirAll(exportDir, s.cfg.ExportDirPerm); err != nil {
-		return fmt.Errorf("failed to create `%s` directory: %w", exportDir, err)
+		return nil, nil, fmt.Errorf("failed to create `%s` directory: %w", exportDir, err)
 	}
 
 	exportFilePath := filepath.Join(exportDir, fileName)
 
 	file, err := os.Create(exportFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to create local export file %s: %w", exportFilePath, err)
+		return nil, nil, fmt.Errorf("failed to create local export file %s: %w", exportFilePath, err)
 	}
-	defer file.Close()
 
 	mw := io.MultiWriter(w, file)
 	writer := csv.NewWriter(mw)
 	writer.Comma = CSVComma
+
+	cleanup := func() error {
+		defer file.Close()
+		if err := file.Sync(); err != nil {
+			return fmt.Errorf("failed to sync export file %s: %w", exportFilePath, err)
+		}
+		return nil
+	}
+
+	return writer, cleanup, nil
+}
+
+func (s *mediaService) exportRatingsToCSV(w io.Writer, fileName string, ratings []model.MediaRating) error {
+	writer, cleanup, err := s.createExportCSVWriter(w, fileName)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	header := []string{"Title", "Type", "Total", "Finished", "Rating"}
 	if err := writer.Write(header); err != nil {
@@ -620,5 +742,6 @@ func (s *mediaService) exportRatingsToCSV(w io.Writer, fileName string, ratings 
 		return err
 	}
 
-	return file.Sync()
+	writer.Flush()
+	return writer.Error()
 }
