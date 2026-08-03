@@ -13,6 +13,18 @@ const (
 	DateExpected         = "YYYY-MM-DD"
 )
 
+type TimelineItem struct {
+	Date     LocalDate `json:"date"`
+	HasMedia bool      `json:"hasMedia"`
+}
+
+type TimelinePagedResult struct {
+	Data       []TimelineItem `json:"data"`
+	NextCursor string         `json:"nextCursor,omitempty"`
+	HasMore    bool           `json:"hasMore"`
+	Total      *int           `json:"total"`
+}
+
 type MediaEntry struct {
 	ID         int64     `json:"id"`
 	Date       LocalDate `json:"date"`

@@ -131,3 +131,28 @@ func (h *MediaHandler) ExportRatingsCSVBetween(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
 }
+
+func (h *MediaHandler) GetTimeline(w http.ResponseWriter, r *http.Request) {
+	cursor, limit := parsePaginationParams(r)
+
+	result, err := h.svc.GetTimeline(cursor, limit)
+	if err != nil {
+		log.Printf("Error fetching timeline: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, result)
+}
+
+func (h *MediaHandler) ExportTimelineCSV(w http.ResponseWriter, r *http.Request) {
+	filename, err := h.svc.ExportTimelineCSV(w)
+	if err != nil {
+		log.Printf("Error exporting timeline CSV: %v", err)
+		http.Error(w, "Failed to export CSV", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+}
